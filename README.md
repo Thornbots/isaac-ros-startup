@@ -1,6 +1,15 @@
 # isaac-ros-startup
 Scripts to configure isaac ros launch for systemd autostart
 
+# Use
+#### Watch logs live
+```bash
+journalctl -u thornbots -f
+```
+### Any time docker is updated
+```bash
+sudo systemctl restart thornbots
+```
 
 # Install
 ### 1. Edit the config for your paths
@@ -22,10 +31,4 @@ sudo cp thornbots.service /etc/systemd/system/thornbots.service
 sudo systemctl daemon-reload
 sudo systemctl enable thornbots     # boot autostart
 sudo systemctl start thornbots      # start right now
-```
-
-# Use
-#### Watch logs live
-```bash
-journalctl -u thornbots -f
 ```
