@@ -3,6 +3,9 @@
 # Thornbots Isaac ROS vision pipeline — boot service.
 #
 # Install:
+#   sudo bash install.sh          ← recommended (auto-detects workspace)
+#
+#   — or manually —
 #   sudo cp thornbots.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable thornbots
@@ -27,11 +30,16 @@ Requires=docker.service
 Type=simple
 
 # Load runtime config (ISAAC_ROS_WS_HOST, thresholds, etc.)
+# Blank fields are auto-detected by thornbots-start.sh at runtime.
 EnvironmentFile=/etc/thornbots/launch.env
 
 # Remove any stale container from a previous (possibly crashed) run.
 # The '-' prefix means systemd ignores a non-zero exit from this command.
 ExecStartPre=-/usr/bin/docker rm -f thornbots-runtime
+
+# Give hardware devices time to enumerate on cold boot before the first start.
+# If you still see "device not found" in logs, increase this.
+ExecStartPre=/bin/sleep 5
 
 # The start script validates the image/model exist, then calls 'exec docker run'
 # so the docker process IS the service process — systemd tracks it directly.
@@ -44,10 +52,6 @@ ExecStop=/usr/bin/docker stop --time 15 thornbots-runtime
 # be fully enumerated immediately after boot; a couple of retries handles that.
 Restart=on-failure
 RestartSec=15s
-
-# Give hardware devices time to enumerate on cold boot before the first start.
-# If you still see "device not found" in logs, increase this.
-ExecStartPre=/bin/sleep 5
 
 # Pipe container stdout/stderr straight into the journal.
 StandardOutput=journal

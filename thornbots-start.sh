@@ -25,6 +25,69 @@ fi
 # shellcheck source=/dev/null
 source "$ENV_FILE"
 
+# ── Auto-discover ISAAC_ROS_WS_HOST if not set ─────────────────────────────
+# Runs only when the field is blank in launch.env.
+if [[ -z "${ISAAC_ROS_WS_HOST:-}" ]]; then
+    echo "ISAAC_ROS_WS_HOST not set — auto-discovering..."
+    _discovered=""
+
+    # Strategy 1: standard Isaac ROS default location under any home directory
+    #   Matches: /home/<any-user>/workspaces/isaac_ros-dev
+    for _candidate in /home/*/workspaces/isaac_ros-dev /root/workspaces/isaac_ros-dev; do
+        if [[ -d "$_candidate" ]]; then
+            _discovered="$_candidate"
+            break
+        fi
+    done
+
+    # Strategy 2: parse ISAAC_ROS_WS= from each user's shell config files.
+    # Handles non-standard workspace locations and all common config names.
+    if [[ -z "$_discovered" ]]; then
+        while IFS= read -r _cfg; do
+            [[ -f "$_cfg" ]] || continue
+
+            # Extract the assigned value, stripping quotes and 'export' prefix.
+            _ws=$(grep -E '^\s*(export\s+)?ISAAC_ROS_WS=' "$_cfg" 2>/dev/null \
+                  | head -1 \
+                  | sed "s|.*ISAAC_ROS_WS=[\"']*||; s|[\"' \t].*||")
+            [[ -z "$_ws" ]] && continue
+
+            # Expand $HOME / ~ using the actual home dir of the file's owner.
+            _owner=$(stat -c '%U' "$_cfg" 2>/dev/null) || continue
+            _owner_home=$(getent passwd "$_owner" | cut -d: -f6) || continue
+            _ws="${_ws/\$HOME/$_owner_home}"
+            _ws="${_ws/\~/$_owner_home}"
+
+            if [[ -d "$_ws" ]]; then
+                _discovered="$_ws"
+                break
+            fi
+        done < <(find /home /root -maxdepth 2 \
+                      \( -name '.bashrc' -o -name '.bash_profile' \
+                         -o -name '.profile' -o -name '.zshrc' \) \
+                      2>/dev/null | sort)
+    fi
+
+    if [[ -z "$_discovered" ]]; then
+        echo "ERROR: Could not auto-discover ISAAC_ROS_WS_HOST." >&2
+        echo "       Set ISAAC_ROS_WS_HOST in $ENV_FILE and restart." >&2
+        exit 1
+    fi
+
+    ISAAC_ROS_WS_HOST="$_discovered"
+    echo "  Discovered workspace: $ISAAC_ROS_WS_HOST"
+fi
+
+# ── Auto-detect UID/GID from workspace owner if not set ────────────────────
+if [[ -z "${HOST_USER_UID:-}" ]]; then
+    HOST_USER_UID=$(stat -c '%u' "$ISAAC_ROS_WS_HOST")
+    echo "Auto-detected HOST_USER_UID: $HOST_USER_UID"
+fi
+if [[ -z "${HOST_USER_GID:-}" ]]; then
+    HOST_USER_GID=$(stat -c '%g' "$ISAAC_ROS_WS_HOST")
+    echo "Auto-detected HOST_USER_GID: $HOST_USER_GID"
+fi
+
 # ── Validate ────────────────────────────────────────────────────────────────
 if [[ ! -d "$ISAAC_ROS_WS_HOST" ]]; then
     echo "ERROR: ISAAC_ROS_WS_HOST does not exist: $ISAAC_ROS_WS_HOST" >&2
@@ -76,6 +139,7 @@ LAUNCH_CMD="source /opt/ros/humble/setup.bash \
 echo "Starting Thornbots runtime container..."
 echo "  Image   : ${THORNBOTS_IMAGE}"
 echo "  WS host : ${ISAAC_ROS_WS_HOST}"
+echo "  UID/GID : ${HOST_USER_UID}/${HOST_USER_GID}"
 echo "  Model   : ${MODEL_HOST_PATH}"
 
 # ── docker run ──────────────────────────────────────────────────────────────
