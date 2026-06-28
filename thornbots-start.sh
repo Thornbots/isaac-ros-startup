@@ -109,6 +109,45 @@ fi
 # ── Create snapshot output dir if needed ────────────────────────────────────
 mkdir -p "$SNAPSHOT_OUTPUT_HOST"
 
+# ── CUDA readiness probe ─────────────────────────────────────────────────────
+# workspace-entrypoint.sh always restarts udev inside the container before
+# handing off to our LAUNCH_CMD. On Jetson that restart temporarily disrupts
+# the CUDA subsystem. If the ROS pipeline starts immediately afterwards (as it
+# does under systemd — no user "think time"), NitrosContext calls
+# cudaMemPoolCreate before the driver has re-stabilized, which produces:
+#
+#   [NitrosContext]: cudaErrorNotSupported (operation not supported)
+#   [NitrosContext]: setCUDAMemoryPoolSize Error: GXF_FAILURE
+#
+# GXF then dereferences the invalid pool handle → SIGSEGV (exit code -11).
+# The crash never appeared in interactive runs because the user waited minutes
+# after boot before typing the command, giving CUDA time to recover.
+#
+# Fix: write a small probe script to /tmp/ on the host before the container
+# starts. The existing -v /tmp/:/tmp/ bind-mount makes it visible inside the
+# container at the same path, so LAUNCH_CMD can call it without any quoting
+# complications. The probe polls nvidia-smi (available on JetPack 5+/6) until
+# the driver reports healthy, then sleeps 3 s for memory-pool settling.
+cat > /tmp/thornbots-cuda-probe.sh << 'PROBE'
+#!/bin/bash
+# Called from LAUNCH_CMD before sourcing ROS.
+# Waits for the CUDA driver to stabilize after workspace-entrypoint.sh
+# restarts udev, then adds a short settle pause for memory-pool init.
+_n=0
+until nvidia-smi > /dev/null 2>&1; do
+    _n=$((_n + 2))
+    if (( _n >= 60 )); then
+        echo "[thornbots] ERROR: GPU did not become ready within 60 s — aborting." >&2
+        exit 1
+    fi
+    echo "[thornbots] Waiting for GPU to stabilize after udev restart (${_n}s elapsed)..."
+    sleep 2
+done
+echo "[thornbots] GPU ready — settling 3 s for CUDA memory-pool initialisation..."
+sleep 3
+PROBE
+chmod +x /tmp/thornbots-cuda-probe.sh
+
 # ── Container-side paths ────────────────────────────────────────────────────
 # The host workspace is always mounted at /workspaces/isaac_ros-dev inside
 # the container, matching what run_dev.sh does.
@@ -124,7 +163,9 @@ CONTAINER_ROS_WS=/workspaces/ros2_ws
 # This runs as 'admin' (via gosu in workspace-entrypoint.sh).
 # We source ROS explicitly because bash runs non-interactively here
 # (/etc/bash.bashrc is only sourced for interactive shells).
-LAUNCH_CMD="source /opt/ros/humble/setup.bash \
+# The probe script runs first to ensure CUDA is stable (see comment above).
+LAUNCH_CMD="bash /tmp/thornbots-cuda-probe.sh \
+  && source /opt/ros/humble/setup.bash \
   && source ${CONTAINER_ROS_WS}/install/setup.bash \
   && exec ros2 launch realsense_yolov8_nitros_bridge isaac_ros_yolov8_realsense.launch.py \
        engine_file_path:=${CONTAINER_MODEL} \
