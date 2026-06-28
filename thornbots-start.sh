@@ -118,7 +118,7 @@ exec docker run \
     -v /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra \
     -v /usr/src/jetson_multimedia_api:/usr/src/jetson_multimedia_api \
     -v /usr/share/vpi3:/usr/share/vpi3 \
-    -v /dev/input:/dev/input \
+    -v /dev/:/dev/ \
     --entrypoint /usr/local/bin/scripts/workspace-entrypoint.sh \
     "${THORNBOTS_IMAGE}" \
     /bin/bash -c "${LAUNCH_CMD}"
