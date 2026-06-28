@@ -160,12 +160,68 @@ _wait "/dev/nvhost-gpu" "[ -e /dev/nvhost-gpu ]"
 # avoids the library-loading issues of the cuInit/ctypes approach.
 _wait "CUDA memory devices" "[ -e /dev/nvmap ] && [ -e /dev/nvhost-ctrl-gpu ]"
 
-# Stage 3: brief settle — even once device nodes are present the kernel driver
-# needs a moment to finish initialising internal state before memory pools work.
-echo "[thornbots] CUDA devices ready — settling 5s for memory-pool init..."
-sleep 5
+# Stage 3: actively verify the CUDA *memory-pool* path the device-node checks
+# cannot cover.  NITROS dies at boot with `cudaErrorNotSupported` from
+# setCUDAMemoryPoolSize when the driver has the device nodes up but has not yet
+# brought the GPU rail / primary context to a state where the stream-ordered
+# allocator works — a window the old fixed `sleep 5` only papered over.
+# We probe the exact runtime-API calls NITROS makes and block until they
+# succeed, so the launch only starts once the operation that was crashing is
+# provably available.  `ldconfig` is refreshed first so libcudart's lazy load
+# of libcuda -> libnvrm_gpu.so (Tegra bind-mount) resolves.
+sudo ldconfig 2>/dev/null || true
+_n=0; _timeout=90
+until _out="$(python3 /tmp/thornbots-mempool-probe.py 2>&1)"; do
+    _rc=$?
+    _n=$((_n + 2))
+    if (( _n > _timeout )); then
+        echo "[thornbots] ERROR: CUDA memory pool not ready after ${_timeout}s (last: ${_out}, rc=${_rc})." >&2
+        exit 1
+    fi
+    echo "[thornbots] CUDA memory pool not ready yet (${_out}, rc=${_rc}); retrying (${_n}s elapsed)..."
+    sleep 2
+done
+echo "[thornbots] CUDA memory pool ready (${_out}) — launching."
 PROBE
 chmod +x /tmp/thornbots-cuda-probe.sh
+
+# ── CUDA memory-pool probe (mirrors NITROS setCUDAMemoryPoolSize) ────────────
+# Uses the CUDA *runtime* API via libcudart, which is baked into the image and
+# resolves cleanly — unlike libcuda.so.1 (driver API), whose Tegra deps are
+# bind-mounted after the image's ldconfig cache was built and defeated the
+# earlier cuInit/ctypes approach.  Exit codes identify which call failed.
+cat > /tmp/thornbots-mempool-probe.py << 'PYEOF'
+import ctypes, sys
+
+rt = None
+for _name in ("libcudart.so", "libcudart.so.12", "libcudart.so.11.0",
+              "/usr/local/cuda/lib64/libcudart.so"):
+    try:
+        rt = ctypes.CDLL(_name)
+        break
+    except OSError:
+        continue
+if rt is None:
+    print("NO_CUDART"); sys.exit(2)
+
+# cudaFree(0) forces primary-context init (the first thing that touches the GPU).
+if rt.cudaFree(ctypes.c_void_p(0)) != 0:
+    print("CTX_INIT_FAIL"); sys.exit(3)
+
+# cudaDeviceGetDefaultMemPool(&pool, device=0)
+pool = ctypes.c_void_p()
+if rt.cudaDeviceGetDefaultMemPool(ctypes.byref(pool), 0) != 0:
+    print("GET_POOL_FAIL"); sys.exit(4)
+
+# cudaMemPoolSetAttribute(pool, cudaMemPoolAttrReleaseThreshold=4, &threshold)
+# This is the exact call that returns cudaErrorNotSupported when the GPU is not
+# yet ready — the one NITROS crashes on.
+val = ctypes.c_uint64(1 << 30)
+if rt.cudaMemPoolSetAttribute(pool, 4, ctypes.byref(val)) != 0:
+    print("SET_ATTR_FAIL"); sys.exit(5)
+
+print("OK"); sys.exit(0)
+PYEOF
 
 # ── Container-side paths ────────────────────────────────────────────────────
 CONTAINER_WS=/workspaces/isaac_ros-dev
