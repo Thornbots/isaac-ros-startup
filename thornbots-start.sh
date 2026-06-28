@@ -103,7 +103,11 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="${LOG_DIR}/thornbots-$(date +%Y%m%d-%H%M%S).log"
 
 # Prune old logs before starting so disk usage stays bounded.
-ls -t "${LOG_DIR}"/thornbots-*.log 2>/dev/null \
+# IMPORTANT: wrap ls in a subgroup + || true so that when no *.log files
+# exist yet (first run), ls exits 2 ("no such file") without triggering
+# set -euo pipefail.  The 2>/dev/null suppresses the error message but NOT
+# the exit code — the || true is what actually prevents the crash.
+{ ls -t "${LOG_DIR}"/thornbots-*.log 2>/dev/null || true; } \
     | tail -n +"$((LOG_KEEP_COUNT + 1))" \
     | xargs -r rm -f
 
@@ -131,9 +135,31 @@ echo "Logging to: $LOG_FILE"
 #             the CUDA driver's internal state is fully consistent.
 #   Stage 3 — settle:       3-second pause for GXF/NITROS memory-pool alloc.
 #
+# Write the Python CUDA check to its own file so the probe script can call
+# it with a plain command rather than using eval+heredoc (which is fragile
+# across bash versions and hard to debug).  Both files land in /tmp, which
+# is bind-mounted into the container at the same path via -v /tmp/:/tmp/.
+cat > /tmp/thornbots-check-cuda.py << 'PYEOF'
+import ctypes, sys
+# Try the Jetson Tegra path first (bind-mounted from the host), then fall
+# back to the linker search path in case the layout differs across JetPack.
+for path in ['/usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1', 'libcuda.so.1']:
+    try:
+        lib = ctypes.CDLL(path)
+        # cuInit(0) == 0 means CUDA_SUCCESS — driver fully ready.
+        sys.exit(0 if lib.cuInit(0) == 0 else 1)
+    except OSError:
+        pass
+sys.exit(1)
+PYEOF
+
 cat > /tmp/thornbots-cuda-probe.sh << 'PROBE'
 #!/bin/bash
-TEGRA_LIBCUDA="/usr/lib/aarch64-linux-gnu/tegra/libcuda.so.1"
+# Called from LAUNCH_CMD (inside the container) before sourcing ROS.
+# workspace-entrypoint.sh restarts udev, which transiently removes
+# /dev/nvhost-gpu and leaves the CUDA driver inconsistent.  If NITROS
+# starts before CUDA recovers it calls cudaMemPoolCreate on a null handle
+# → SIGSEGV (exit -11).  This probe gates launch until CUDA is ready.
 
 _wait() {
     local desc="$1" check="$2" n=0 timeout=90
@@ -149,25 +175,19 @@ _wait() {
     echo "[thornbots] ${desc} OK."
 }
 
-# Stage 1: device node — confirms udev has re-enumerated the GPU
+# Stage 1: device node — udev must re-enumerate /dev/nvhost-gpu before
+# the CUDA driver can be contacted at all.
 _wait "/dev/nvhost-gpu" "[ -e /dev/nvhost-gpu ]"
 
-# Stage 2: driver init — confirms CUDA is actually usable, not just present
-# python3 is always available in the Isaac ROS container.
-# cuInit(0) returns CUDA_SUCCESS (0) only when the driver is fully ready.
-_wait "CUDA driver (cuInit)" "python3 - << 'PY'
-import ctypes, sys
-for path in ['$TEGRA_LIBCUDA', 'libcuda.so.1']:
-    try:
-        lib = ctypes.CDLL(path)
-        sys.exit(0 if lib.cuInit(0) == 0 else 1)
-    except OSError:
-        pass
-sys.exit(1)
-PY"
+# Stage 2: driver init — even once the node exists the driver needs a moment
+# to reach a consistent state.  python3 + /tmp/thornbots-check-cuda.py
+# (written by thornbots-start.sh and visible here via -v /tmp/:/tmp/)
+# calls cuInit(0) and exits 0 only on CUDA_SUCCESS.
+_wait "CUDA driver (cuInit)" "python3 /tmp/thornbots-check-cuda.py"
 
-# Stage 3: settle — GXF/NITROS needs a moment after cuInit for pool alloc
-echo "[thornbots] Settling 3s for NITROS memory-pool initialisation..."
+# Stage 3: settle — GXF/NITROS allocates memory pools immediately after
+# cuInit; give the driver 3 s to finish internal initialisation.
+echo "[thornbots] CUDA ready — settling 3s for NITROS memory-pool init..."
 sleep 3
 PROBE
 chmod +x /tmp/thornbots-cuda-probe.sh
