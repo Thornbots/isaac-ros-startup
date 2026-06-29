@@ -160,28 +160,32 @@ _wait "/dev/nvhost-gpu" "[ -e /dev/nvhost-gpu ]"
 # avoids the library-loading issues of the cuInit/ctypes approach.
 _wait "CUDA memory devices" "[ -e /dev/nvmap ] && [ -e /dev/nvhost-ctrl-gpu ]"
 
-# Stage 3: actively verify the CUDA *memory-pool* path the device-node checks
-# cannot cover.  NITROS dies at boot with `cudaErrorNotSupported` from
-# setCUDAMemoryPoolSize when the driver has the device nodes up but has not yet
-# brought the GPU rail / primary context to a state where the stream-ordered
-# allocator works — a window the old fixed `sleep 5` only papered over.
-# We probe the exact runtime-API calls NITROS makes and block until they
-# succeed, so the launch only starts once the operation that was crashing is
-# provably available.  `ldconfig` is refreshed first so libcudart's lazy load
-# of libcuda -> libnvrm_gpu.so (Tegra bind-mount) resolves.
+# Stage 3: fast-fail guard.  Verify the exact runtime-API calls NITROS makes
+# (cudaGetDeviceCount -> cudaFree(0) -> cudaDeviceGetDefaultMemPool ->
+# cudaMemPoolSetAttribute) actually succeed AS THIS USER before launching.  If
+# they don't, NITROS would otherwise segfault on a null CUDA mem-pool handle
+# (exit -11) with no usable error; here we surface the real cudaError instead.
+#
+# The classic failure this catches: the GPU device nodes are present but CUDA
+# returns cudaErrorNotSupported (801) on the first call — which on this stack
+# means the container's /dev shadowed the NVIDIA runtime's CDI GPU injection
+# (e.g. someone re-added `-v /dev:/dev`), leaving nvgpu nodes only root can use.
+# A short retry covers a genuine cold-boot readiness race; a persistent failure
+# is a misconfiguration, so we exit fast and let systemd restart/log it.
 sudo ldconfig 2>/dev/null || true
-_n=0; _timeout=90
+_n=0; _timeout=20
 until _out="$(python3 /tmp/thornbots-mempool-probe.py 2>&1)"; do
     _rc=$?
     _n=$((_n + 2))
     if (( _n > _timeout )); then
-        echo "[thornbots] ERROR: CUDA memory pool not ready after ${_timeout}s (last: ${_out}, rc=${_rc})." >&2
+        echo "[thornbots] ERROR: CUDA not usable after ${_timeout}s (${_out}, rc=${_rc})." >&2
+        echo "[thornbots]        err=801 here usually means /dev shadowed the CDI GPU injection." >&2
         exit 1
     fi
-    echo "[thornbots] CUDA memory pool not ready yet (${_out}, rc=${_rc}); retrying (${_n}s elapsed)..."
+    echo "[thornbots] CUDA not ready yet (${_out}, rc=${_rc}); retrying (${_n}s elapsed)..."
     sleep 2
 done
-echo "[thornbots] CUDA memory pool ready (${_out}) — launching."
+echo "[thornbots] CUDA ready (${_out}) — launching."
 PROBE
 chmod +x /tmp/thornbots-cuda-probe.sh
 
@@ -295,7 +299,19 @@ echo "  Log     : ${LOG_FILE}"
 #   --ipc=host          Shared memory for zero-copy NITROS transfers.
 #   --pid=host          Required for tegrastats and Jetson power APIs.
 #   --runtime nvidia    Enables GPU/CUDA via the NVIDIA container runtime.
-#   -v /dev/:/dev/      All host devices (replaces the per-device -v flags).
+#   -v /dev:/host-dev   Live bind of the host's /dev for USB hotplug recovery
+#                       (e.g. CP210x ttyUSB* re-enumerating mid-run).  We do
+#                       NOT bind it over /dev: doing so shadows the NVIDIA
+#                       runtime's CDI GPU-device injection, and the resulting
+#                       host-presented nvgpu nodes are only usable by root —
+#                       the non-root 'admin' user then gets cudaErrorNotSupported
+#                       (801) on the first CUDA call and NITROS segfaults.
+#                       Keeping /dev as the CDI-managed one lets admin use CUDA;
+#                       consumers of hotplugging devices read them via /host-dev.
+#   --device /dev/ttyTHS1
+#                       Pin the on-chip UART at its normal path (it does not
+#                       hotplug, so a fixed node is correct and keeps its path
+#                       stable for the dji_serial_bridge).
 #   workspace-entrypoint.sh
 #                       Upstream Isaac ROS entrypoint: creates 'admin' user
 #                       matching HOST_USER_UID/GID, adds it to dialout
@@ -326,7 +342,8 @@ echo "  Log     : ${LOG_FILE}"
         -v /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra \
         -v /usr/src/jetson_multimedia_api:/usr/src/jetson_multimedia_api \
         -v /usr/share/vpi3:/usr/share/vpi3 \
-        -v /dev/:/dev/ \
+        -v /dev:/host-dev \
+        --device /dev/ttyTHS1 \
         --entrypoint /usr/local/bin/scripts/workspace-entrypoint.sh \
         "${THORNBOTS_IMAGE}" \
         /bin/bash -c "${LAUNCH_CMD}"
