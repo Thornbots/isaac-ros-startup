@@ -271,18 +271,18 @@ LAUNCH_CMD="bash /tmp/thornbots-cuda-probe.sh \
   && source ${CONTAINER_ROS_WS}/install/setup.bash \
   && exec ros2 launch realsense_yolov8_nitros_bridge isaac_ros_yolov8_realsense.launch.py \
        engine_file_path:=${CONTAINER_MODEL} \
-       confidence_threshold:=${CONFIDENCE_THRESHOLD} \
-       nms_threshold:=${NMS_THRESHOLD} \
-       center_sample_fraction:=${CENTER_SAMPLE_FRACTION} \
-       center_weight:=${CENTER_WEIGHT} \
-       priority_class_bonus:=${PRIORITY_CLASS_BONUS} \
-       priority_class_ids:='${PRIORITY_CLASS_IDS}' \
-       serial_device:=${SERIAL_DEVICE} \
-       serial_baudrate:=${SERIAL_BAUDRATE} \
+       confidence_threshold:=${CONFIDENCE_THRESHOLD:-0.25} \
+       nms_threshold:=${NMS_THRESHOLD:-0.45} \
+       center_sample_fraction:=${CENTER_SAMPLE_FRACTION:-0.25} \
+       center_weight:=${CENTER_WEIGHT:-1.0} \
+       priority_class_bonus:=${PRIORITY_CLASS_BONUS:-0.5} \
+       priority_class_ids:='${PRIORITY_CLASS_IDS:-[2,6]}' \
+       serial_device:=${SERIAL_DEVICE:-/dev/ttyTHS1} \
+       serial_baudrate:=${SERIAL_BAUDRATE:-115200} \
        enable_sentry_pkg:=${ENABLE_SENTRY_PKG:-True} \
        lidar_serial_port:=${LIDAR_SERIAL_DEVICE:-/host-dev/ttyUSB0} \
        enable_rviz:=${ENABLE_RVIZ:-False} \
-       enable_snapshot:=${ENABLE_SNAPSHOT} \
+       enable_snapshot:=${ENABLE_SNAPSHOT:-False} \
        snapshot_output_dir:=${CONTAINER_SNAPSHOT}"
 
 echo "Starting Thornbots runtime container..."
