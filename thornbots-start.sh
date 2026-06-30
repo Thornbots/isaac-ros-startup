@@ -281,6 +281,7 @@ LAUNCH_CMD="bash /tmp/thornbots-cuda-probe.sh \
        serial_baudrate:=${SERIAL_BAUDRATE} \
        enable_sentry_pkg:=${ENABLE_SENTRY_PKG:-True} \
        lidar_serial_port:=${LIDAR_SERIAL_DEVICE:-/host-dev/ttyUSB0} \
+       enable_rviz:=${ENABLE_RVIZ:-False} \
        enable_snapshot:=${ENABLE_SNAPSHOT} \
        snapshot_output_dir:=${CONTAINER_SNAPSHOT}"
 
