@@ -271,7 +271,7 @@ LAUNCH_CMD="bash /tmp/thornbots-cuda-probe.sh \
   && source ${CONTAINER_ROS_WS}/install/setup.bash \
   && exec ros2 launch realsense_yolov8_nitros_bridge isaac_ros_yolov8_realsense.launch.py \
        engine_file_path:=${CONTAINER_MODEL} \
-       confidence_threshold:=${CONFIDENCE_THRESHOLD:-0.25} \
+       confidence_threshold:=${CONFIDENCE_THRESHOLD:-0.5} \
        nms_threshold:=${NMS_THRESHOLD:-0.45} \
        center_sample_fraction:=${CENTER_SAMPLE_FRACTION:-0.25} \
        center_weight:=${CENTER_WEIGHT:-1.0} \
