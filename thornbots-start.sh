@@ -95,38 +95,23 @@ fi
 mkdir -p "$SNAPSHOT_OUTPUT_HOST"
 
 # ── Log file setup ──────────────────────────────────────────────────────────
-# Each service run gets a log file named with an ever-increasing sequence
-# number (thornbots-000001.log, thornbots-000002.log, ...) so runs never
-# overwrite each other and the newest run always sorts last alphabetically.
-# Old files beyond the LOG_KEEP_COUNT most recent are pruned automatically.
+# Each service run gets its own timestamped log file
+#   thornbots-YYYY-MM-DD-HH-MM-SS.log
+# so runs never overwrite each other. Unbounded: nothing is pruned, every run
+# is kept (systemd's RestartSec=15s guarantees restarts land on distinct
+# seconds, so filenames never collide; even a same-second collision just
+# appends via `tee -a`).
+#
+# Why no sequence numbers / pruning pipeline here: under `set -euo pipefail`,
+# an unguarded command in those pipelines that exits non-zero kills the whole
+# script before `docker run`. The previous sequence scheme crashed exactly this
+# way — on an empty log dir the `grep` in the "next sequence" lookup matched
+# nothing, exited 1, and pipefail propagated that into the `_last_seq=$(...)`
+# assignment, tripping `set -e` on every restart (an unbreakable crash loop).
+# `date` is the only command below and cannot fail with a fixed format string.
 LOG_DIR="${LOG_DIR:-/var/log/thornbots}"
-LOG_KEEP_COUNT="${LOG_KEEP_COUNT:-2000}"
 mkdir -p "$LOG_DIR"
-
-# Determine the next sequence number: 1 + the highest sequence number seen
-# among existing thornbots-NNNNNN.log files (0 if none exist yet). Deriving
-# it from existing files (rather than a separate counter file) means it
-# self-heals even if LOG_DIR is ever pruned or copied elsewhere.
-_last_seq=$(
-    { ls "${LOG_DIR}"/thornbots-*.log 2>/dev/null || true; } \
-        | sed -E 's/.*thornbots-([0-9]+)\.log$/\1/' \
-        | grep -E '^[0-9]+$' \
-        | sort -n \
-        | tail -1
-)
-_next_seq=$(( 10#${_last_seq:-0} + 1 ))
-LOG_FILE="${LOG_DIR}/thornbots-$(printf '%06d' "$_next_seq").log"
-
-# Prune old logs before starting so disk usage stays bounded.
-# IMPORTANT: wrap ls in a subgroup + || true so that when no *.log files
-# exist yet (first run), ls exits 2 ("no such file") without triggering
-# set -euo pipefail.  The 2>/dev/null suppresses the error message but NOT
-# the exit code — the || true is what actually prevents the crash.
-# Sorted by sequence number (not mtime) so pruning tracks run order exactly.
-{ ls "${LOG_DIR}"/thornbots-*.log 2>/dev/null || true; } \
-    | sort -t- -k2 -n -r \
-    | tail -n +"$((LOG_KEEP_COUNT + 1))" \
-    | xargs -r rm -f
+LOG_FILE="${LOG_DIR}/thornbots-$(date +%Y-%m-%d-%H-%M-%S).log"
 
 echo "Logging to: $LOG_FILE"
 

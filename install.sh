@@ -186,11 +186,9 @@ HOST_USER_UID=${WS_UID}
 HOST_USER_GID=${WS_GID}
 
 # ── Persistent logging ────────────────────────────────────────────────────
-# Each run writes thornbots-NNNNNN.log with an ever-increasing sequence
-# number (never resets/overwrites); oldest files pruned to keep LOG_KEEP_COUNT
-# total. Change LOG_DIR if you want logs elsewhere.
+# Each run writes its own timestamped file thornbots-YYYY-MM-DD-HH-MM-SS.log
+# (never overwrites). Unbounded: nothing is pruned. Change LOG_DIR to relocate.
 LOG_DIR=${LOG_DIR}
-LOG_KEEP_COUNT=2000
 EOF
 
 chmod 640 "$CONFIG_FILE"
@@ -231,7 +229,7 @@ echo ""
 echo "  Config  : $CONFIG_FILE"
 echo "  Script  : $SCRIPT_DST"
 echo "  Service : $SERVICE_DST"
-echo "  Logs    : $LOG_DIR/thornbots-NNNNNN.log"
+echo "  Logs    : $LOG_DIR/thornbots-YYYY-MM-DD-HH-MM-SS.log"
 echo ""
 echo "Start now:"
 echo "  sudo systemctl start thornbots"
@@ -241,6 +239,6 @@ echo "  journalctl -u thornbots -f"
 echo ""
 echo "View latest persistent log file:"
 echo "  ls -l $LOG_DIR/ | tail -5"
-echo "  tail -f \$(ls $LOG_DIR/thornbots-*.log | sort -t- -k2 -n | tail -1)"
+echo "  tail -f \$(ls -t $LOG_DIR/thornbots-*.log | head -1)"
 echo ""
 echo "To reconfigure this machine, re-run:  sudo bash install.sh"
