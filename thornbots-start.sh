@@ -95,19 +95,36 @@ fi
 mkdir -p "$SNAPSHOT_OUTPUT_HOST"
 
 # ── Log file setup ──────────────────────────────────────────────────────────
-# Each service run gets a timestamped log file so runs never overwrite each other.
+# Each service run gets a log file named with an ever-increasing sequence
+# number (thornbots-000001.log, thornbots-000002.log, ...) so runs never
+# overwrite each other and the newest run always sorts last alphabetically.
 # Old files beyond the LOG_KEEP_COUNT most recent are pruned automatically.
 LOG_DIR="${LOG_DIR:-/var/log/thornbots}"
-LOG_KEEP_COUNT="${LOG_KEEP_COUNT:-20}"
+LOG_KEEP_COUNT="${LOG_KEEP_COUNT:-2000}"
 mkdir -p "$LOG_DIR"
-LOG_FILE="${LOG_DIR}/thornbots-$(date +%Y%m%d-%H%M%S).log"
+
+# Determine the next sequence number: 1 + the highest sequence number seen
+# among existing thornbots-NNNNNN.log files (0 if none exist yet). Deriving
+# it from existing files (rather than a separate counter file) means it
+# self-heals even if LOG_DIR is ever pruned or copied elsewhere.
+_last_seq=$(
+    { ls "${LOG_DIR}"/thornbots-*.log 2>/dev/null || true; } \
+        | sed -E 's/.*thornbots-([0-9]+)\.log$/\1/' \
+        | grep -E '^[0-9]+$' \
+        | sort -n \
+        | tail -1
+)
+_next_seq=$(( 10#${_last_seq:-0} + 1 ))
+LOG_FILE="${LOG_DIR}/thornbots-$(printf '%06d' "$_next_seq").log"
 
 # Prune old logs before starting so disk usage stays bounded.
 # IMPORTANT: wrap ls in a subgroup + || true so that when no *.log files
 # exist yet (first run), ls exits 2 ("no such file") without triggering
 # set -euo pipefail.  The 2>/dev/null suppresses the error message but NOT
 # the exit code — the || true is what actually prevents the crash.
-{ ls -t "${LOG_DIR}"/thornbots-*.log 2>/dev/null || true; } \
+# Sorted by sequence number (not mtime) so pruning tracks run order exactly.
+{ ls "${LOG_DIR}"/thornbots-*.log 2>/dev/null || true; } \
+    | sort -t- -k2 -n -r \
     | tail -n +"$((LOG_KEEP_COUNT + 1))" \
     | xargs -r rm -f
 

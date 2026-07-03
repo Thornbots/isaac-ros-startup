@@ -186,10 +186,11 @@ HOST_USER_UID=${WS_UID}
 HOST_USER_GID=${WS_GID}
 
 # ── Persistent logging ────────────────────────────────────────────────────
-# Each run writes thornbots-YYYYMMDD-HHMMSS.log; oldest files pruned to keep
-# LOG_KEEP_COUNT total. Change LOG_DIR if you want logs elsewhere.
+# Each run writes thornbots-NNNNNN.log with an ever-increasing sequence
+# number (never resets/overwrites); oldest files pruned to keep LOG_KEEP_COUNT
+# total. Change LOG_DIR if you want logs elsewhere.
 LOG_DIR=${LOG_DIR}
-LOG_KEEP_COUNT=20
+LOG_KEEP_COUNT=2000
 EOF
 
 chmod 640 "$CONFIG_FILE"
