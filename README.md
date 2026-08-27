@@ -2,7 +2,7 @@
 
 Scripts to configure Isaac ROS launch for systemd autostart.
 
-Per-machine values — workspace path, UID, GID — are **auto-detected** so the
+Per-machine values (workspace path, UID, GID) are **auto-detected**, so the
 same repo works across Jetsons with different usernames and workspace locations.
 
 ## Install
@@ -53,7 +53,7 @@ sudo systemctl start thornbots
 
 > **Tip:** leaving `ISAAC_ROS_WS_HOST`, `HOST_USER_UID`, and `HOST_USER_GID`
 > blank in `launch.env` tells `thornbots-start.sh` to auto-detect them at
-> boot — so even the manual path can be zero-config.
+> boot, so even the manual path can be zero-config.
 
 ## Re-configure a machine
 
@@ -85,8 +85,8 @@ sudo systemctl daemon-reload && sudo systemctl restart thornbots
 
 `thornbots-start.sh` runs this logic at boot when `ISAAC_ROS_WS_HOST` is blank:
 
-1. **Glob scan** — checks `~/workspaces/isaac_ros-dev` under every home directory (covers the Isaac ROS default location regardless of username).
-2. **Shell config parse** — if nothing is found, reads `ISAAC_ROS_WS=` from each user's `.bashrc` / `.bash_profile` / `.profile` / `.zshrc`, expanding `$HOME` correctly per owner.
+1. It globs for `~/workspaces/isaac_ros-dev` under every home directory, which covers the Isaac ROS default location regardless of username.
+2. If that finds nothing, it parses each user's shell config, reading `ISAAC_ROS_WS=` from `.bashrc` / `.bash_profile` / `.profile` / `.zshrc` and expanding `$HOME` correctly per owner.
 
 `HOST_USER_UID` and `HOST_USER_GID` are auto-detected from `stat` on the
 discovered workspace directory, so the container's `admin` user always matches
