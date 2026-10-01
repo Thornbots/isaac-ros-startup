@@ -24,8 +24,9 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
 
 ## Rules
 
-- Testing the service starts a container. Agents may start, stop and
-  reboot-test it on `ts-nano-sentry` only (the user, 2026-09-30).
+- Testing the service starts a container. Agents test it on
+  `ts-nano-sentry` only, and ask before each start, stop or reboot
+  (`../CLAUDE.md` § Containers, the user, 2026-10-01).
 - Keep the `docker run` flags in `thornbots-start.sh` in step with
   isaac-ros-cli's `run_dev.py` for aarch64.
 - Commit here and push, then bump the gitlink in `../`.
