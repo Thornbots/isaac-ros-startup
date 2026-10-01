@@ -59,18 +59,23 @@ if [[ ! -f "$ENGINE_HOST" && ! -f "$ONNX_HOST" ]]; then
 fi
 [[ -f "$ENGINE_HOST" ]] || echo "No engine yet: TensorRT builds it from the ONNX (minutes)."
 
+# ── Log: named by a run counter, never the date: the wall clock can be
+# wrong until NTP syncs (README.md, "Logs survive a bad clock").
 LOG_DIR="${LOG_DIR:-/var/log/thornbots}"
-mkdir -p "$LOG_DIR" "$SNAPSHOT_OUTPUT_HOST"
-LOG_FILE="${LOG_DIR}/thornbots-$(date +%Y-%m-%d-%H-%M-%S).log"
-
-echo "Image   : ${THORNBOTS_IMAGE}"
-echo "WS host : ${ISAAC_ROS_WS_HOST} (uid/gid ${HOST_USER_UID}/${HOST_USER_GID})"
-echo "Log     : ${LOG_FILE}"
+mkdir -p "$LOG_DIR" "$SNAPSHOT_OUTPUT_HOST" /var/lib/thornbots
+RUN=$(( $(cat /var/lib/thornbots/run-count 2>/dev/null || echo 0) + 1 ))
+echo "$RUN" > /var/lib/thornbots/run-count
+LOG_FILE="${LOG_DIR}/thornbots-run$(printf %05d "$RUN").log"
+ln -sfn "$(basename "$LOG_FILE")" "${LOG_DIR}/latest.log"
 
 # Flags follow isaac-ros-cli's run_dev.py for aarch64, minus X11 and the TTY.
 # /dev stays the one --privileged gives; the host's is at /host-dev for the
 # hotplugging lidar (README.md, "Why /host-dev").
 {
+    echo "Run     : ${RUN}, boot $(cut -c1-8 /proc/sys/kernel/random/boot_id), uptime $(cut -d' ' -f1 /proc/uptime)s"
+    echo "Image   : ${THORNBOTS_IMAGE}"
+    echo "WS host : ${ISAAC_ROS_WS_HOST} (uid/gid ${HOST_USER_UID}/${HOST_USER_GID}), src at $(git -c safe.directory='*' -C "${ISAAC_ROS_WS_HOST}/src" describe --always --dirty 2>/dev/null || echo '?')"
+    echo "Log     : ${LOG_FILE}"
     boot "docker run"
     set +e
     docker run --rm \
@@ -111,5 +116,5 @@ echo "Log     : ${LOG_FILE}"
     set -e
     boot "container exited with code ${rc}"
     exit "$rc"
-} 2>&1 | tee -a "$LOG_FILE"
+} 2>&1 | python3 "${LIB_DIR}/log-stamp.py" "$LOG_FILE"
 exit "${PIPESTATUS[0]}"

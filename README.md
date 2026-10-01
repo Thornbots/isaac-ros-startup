@@ -27,7 +27,7 @@ pulling changes here.
 | | |
 |---|---|
 | Logs, live | `journalctl -u thornbots -f` |
-| Logs, per run | `$LOG_DIR/thornbots-<date>.log`, never pruned |
+| Logs, per run | `$LOG_DIR/thornbots-run<N>.log`, newest at `$LOG_DIR/latest.log`, never pruned |
 | Restart after editing `launch.env` | `sudo systemctl restart thornbots` |
 | Shell in the running stack | `docker exec -it -u admin thornbots-runtime bash` |
 | Stop for development | `sudo systemctl stop thornbots` (and `disable` to keep it off across boots) |
@@ -72,6 +72,17 @@ and fails fast with the real error instead.
 `dji_serial_bridge_node` on `/dev/ttyTHS1`. If either launch exits,
 `thornbots-launch.sh` stops the other and the container exits, so systemd
 restarts the whole stack.
+
+**Logs survive a bad clock.** The Jetsons boot on the RTC's time, and NTP
+can step it by a minute or more once Wi-Fi is up, after the stack has
+started (sentry, 2026-10-01: back once, forward ~80 s the next boot). So
+`log-stamp.py` prefixes every line with seconds since boot
+(`CLOCK_BOOTTIME`, never stepped) and the wall time, marked `?` until NTP
+syncs, and writes a `[clock]` line at the sync and any later step. ROS's own
+per-line time (`{date_time_with_ms}`) steps with the clock. Files are named
+by a run counter (`/var/lib/thornbots/run-count`), never the date, and sort
+in run order; each starts with its boot ID, image and workspace commit. The file is fsynced every second,
+because a battery pull is how most runs end.
 
 **Environment.** The image exports `ROS_DOMAIN_ID`, the Fast DDS profile
 and `RMW_IMPLEMENTATION` from `/etc/bash.bashrc`, which a non-interactive
