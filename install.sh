@@ -32,6 +32,9 @@ install -d /etc/thornbots /usr/local/lib/thornbots
 install -m 755 "$SRC/thornbots-launch.sh" "$SRC/cuda-probe.py" "$SRC/log-stamp.py" /usr/local/lib/thornbots/
 install -m 755 "$SRC/thornbots-start.sh" /usr/local/bin/thornbots-start.sh
 install -m 644 "$SRC/thornbots.service" /etc/systemd/system/thornbots.service
+# Keep logind from deleting the stack's Fast DDS segments on logout.
+install -D -m 644 "$SRC/logind-thornbots.conf" /etc/systemd/logind.conf.d/thornbots.conf
+systemctl restart systemd-logind
 
 CFG=/etc/thornbots/launch.env
 if [[ -f "$CFG" && "$RESET" == 0 ]]; then

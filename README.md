@@ -84,6 +84,16 @@ by a run counter (`/var/lib/thornbots/run-count`), never the date, and sort
 in run order; each starts with its boot ID, image and workspace commit. The file is fsynced every second,
 because a battery pull is how most runs end.
 
+**RemoveIPC.** The stack runs as the workspace owner's UID, the same one
+you ssh in as. logind's default `RemoveIPC=yes` deletes that UID's
+`/dev/shm` files 10 s after its last session ends, Fast DDS's shared-memory
+segments included. Mapped segments keep working, but a sender opens a
+receiver's port by name, so after the delete it writes to a new segment
+nobody reads: nodes on the robot stop hearing each other without an error.
+On the sentry (2026-10-01) the lifecycle manager then lost amcl's or
+map_server's heartbeat in 6 of 7 runs, and never brought them back. install.sh
+installs `logind-thornbots.conf` (`RemoveIPC=no`).
+
 **Environment.** The image exports `ROS_DOMAIN_ID`, the Fast DDS profile
 and `RMW_IMPLEMENTATION` from `/etc/bash.bashrc`, which a non-interactive
 shell never reads, so `thornbots-launch.sh` sets them itself.

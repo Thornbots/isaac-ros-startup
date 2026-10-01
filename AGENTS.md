@@ -9,9 +9,11 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
   launches up in 17.6 s, engine loaded about 4 s later. Not yet run on
   hero or standard. Goal: power-on to a running stack under 1 min
   (ROADMAP track C).
+- Needs `RemoveIPC=no` (install.sh, README.md "RemoveIPC"). Without it an
+  ssh logout breaks Fast DDS shared memory and the localization lifecycle.
 - The first start after a new ONNX builds the TensorRT engine (141 s on
-  the sentry) and starves `map_server`'s heartbeat, so the lifecycle
-  manager takes amcl down. Restart the service once the `.plan` exists.
+  the sentry). amcl dropped during that build too, put down to CPU at the
+  time; RemoveIPC fits it better. Unretested with RemoveIPC=no.
 - Open: the robot can't build its image on one battery. isaac-ros-cli
   checks layers with `docker manifest inspect` (registry only), so it
   recompiles librealsense over a base loaded with `docker load`. What
