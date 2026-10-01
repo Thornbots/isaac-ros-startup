@@ -1,93 +1,78 @@
 # isaac-ros-startup
 
-Scripts to configure Isaac ROS launch for systemd autostart.
-
-Per-machine values (workspace path, UID, GID) are **auto-detected**, so the
-same repo works across Jetsons with different usernames and workspace locations.
+Starts the robot stack at boot: a systemd service that runs our Isaac ROS
+image (ROS 2 Jazzy, JetPack 7.2.1) with `thornbots_pkg`'s `auto.launch.py`
+and the YOLO launch from `realsense-yolov8-nitros-bridge`. The Humble
+version is on the `humble` branch.
 
 ## Install
 
-### Automatic (recommended)
-
-Run `install.sh` as root. It scans the system for Isaac ROS workspaces,
-detects the owner's UID/GID, and writes a fully populated config for this machine.
+Build the image once with `isaac-ros activate --build-local` (see the
+workspace README), then:
 
 ```bash
-sudo bash install.sh
-```
-
-If it finds multiple workspaces it will prompt you to choose one.
-You can also target a specific user or path directly:
-
-```bash
-sudo bash install.sh --user alice
-sudo bash install.sh --ws /data/isaac_ros-dev
-```
-
-Then start the service:
-
-```bash
+sudo bash install.sh            # or: --ws /path/to/isaac_ros-dev
 sudo systemctl start thornbots
-```
-
-### Manual
-
-If you prefer to set values by hand:
-
-```bash
-# 1. Write config
-sudo mkdir -p /etc/thornbots
-sudo cp launch.env /etc/thornbots/launch.env
-sudo nano /etc/thornbots/launch.env   # set ISAAC_ROS_WS_HOST (and optionally HOST_USER_UID/GID)
-
-# 2. Install the start script
-sudo cp thornbots-start.sh /usr/local/bin/thornbots-start.sh
-sudo chmod +x /usr/local/bin/thornbots-start.sh
-
-# 3. Install and enable the service
-sudo cp thornbots.service /etc/systemd/system/thornbots.service
-sudo systemctl daemon-reload
-sudo systemctl enable thornbots
-sudo systemctl start thornbots
-```
-
-> **Tip:** leaving `ISAAC_ROS_WS_HOST`, `HOST_USER_UID`, and `HOST_USER_GID`
-> blank in `launch.env` tells `thornbots-start.sh` to auto-detect them at
-> boot, so even the manual path can be zero-config.
-
-## Re-configure a machine
-
-Just re-run the installer:
-
-```bash
-sudo bash install.sh
-sudo systemctl restart thornbots
-```
-
-## Usage
-
-#### Watch logs live
-```bash
 journalctl -u thornbots -f
 ```
 
-#### Any time docker is updated
+`install.sh` copies the scripts to `/usr/local/lib/thornbots` and
+`/usr/local/bin`, enables the unit, and writes `/etc/thornbots/launch.env`
+from `launch.env` with the workspace, UID and GID filled in. It keeps an
+existing `launch.env`; `--reset-config` rewrites it. Re-run it after
+pulling changes here.
+
+## Use
+
+| | |
+|---|---|
+| Logs, live | `journalctl -u thornbots -f` |
+| Logs, per run | `$LOG_DIR/thornbots-<date>.log`, never pruned |
+| Restart after editing `launch.env` | `sudo systemctl restart thornbots` |
+| Shell in the running stack | `docker exec -it -u admin thornbots-runtime bash` |
+| Stop for development | `sudo systemctl stop thornbots` (and `disable` to keep it off across boots) |
+
+Stop the service before `isaac-ros activate`: both want the camera, the
+lidar and `/dev/ttyTHS1`.
+
+The image bakes our packages into `/workspaces/ros2_ws`, and that is what
+the service runs. To run a `colcon build` from the workspace instead, set
+`USE_WS_OVERLAY=true`.
+
+## Boot time
+
+Each stage prints a `[boot] <uptime>s` line to the journal:
+
 ```bash
-sudo systemctl restart thornbots
+journalctl -b -u thornbots | grep '\[boot\]'
 ```
 
-#### After editing launch.env
-```bash
-sudo systemctl daemon-reload && sudo systemctl restart thornbots
-```
+`thornbots-start.sh`, `docker run`, `container up`, `CUDA ready` and
+`launches started` mark the stages. The first start without
+`yolo11s_fp16.plan` builds the TensorRT engine from the ONNX, which takes
+minutes; later starts load the saved engine.
 
-## How auto-detection works
+## Design notes
 
-`thornbots-start.sh` runs this logic at boot when `ISAAC_ROS_WS_HOST` is blank:
+**No `network-online.target`.** The robot runs air-gapped in a match, and
+waiting for Wi-Fi costs boot time. Fast DDS picks its interfaces when a
+participant starts, so nodes started before Wi-Fi or tailscale are up
+aren't reachable from other machines until the service restarts.
 
-1. It globs for `~/workspaces/isaac_ros-dev` under every home directory, which covers the Isaac ROS default location regardless of username.
-2. If that finds nothing, it parses each user's shell config, reading `ISAAC_ROS_WS=` from `.bashrc` / `.bash_profile` / `.profile` / `.zshrc` and expanding `$HOME` correctly per owner.
+**Why /host-dev.** `--privileged` gives the container a copy of `/dev` at
+start. The lidar (CP210x) can re-enumerate mid-run, so it is read through
+the host's live `/dev` mounted at `/host-dev`. Don't mount the host's
+`/dev` over `/dev`: that shadows the NVIDIA runtime's CDI GPU devices, the
+container user gets `cudaErrorNotSupported` (801) on its first CUDA call,
+and NITROS segfaults. `cuda-probe.py` makes the same CUDA calls NITROS makes
+and fails fast with the real error instead.
 
-`HOST_USER_UID` and `HOST_USER_GID` are auto-detected from `stat` on the
-discovered workspace directory, so the container's `admin` user always matches
-the file owner regardless of which UID the Jetson was set up with.
+**Two launches, one container.** The YOLO launch's own serial bridge is off
+(`enable_serial_bridge:=False`), because `auto.launch.py` starts
+`dji_serial_bridge_node` on `/dev/ttyTHS1`. If either launch exits,
+`thornbots-launch.sh` stops the other and the container exits, so systemd
+restarts the whole stack.
+
+**Environment.** The image exports `ROS_DOMAIN_ID`, the Fast DDS profile
+and `RMW_IMPLEMENTATION` from `/etc/bash.bashrc`, which a non-interactive
+shell never reads, so `thornbots-launch.sh` sets them itself.

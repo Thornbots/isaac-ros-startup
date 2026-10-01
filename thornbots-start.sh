@@ -1,361 +1,115 @@
 #!/bin/bash
-# /usr/local/bin/thornbots-start.sh
-#
-# Production launcher for the Thornbots Isaac ROS vision pipeline.
-# Intended to be called by thornbots.service, NOT run_dev.sh.
-#
-# Execution chain:
-#   systemd → this script → docker run
-#     → workspace-entrypoint.sh  (creates admin user, adds dialout, restarts udev)
-#     → exec gosu admin /bin/bash (sources ROS, runs cuda probe, runs ros2 launch)
-#
+# /usr/local/bin/thornbots-start.sh: run the robot stack in a container.
+# Called by thornbots.service: systemd -> this script -> docker run ->
+# workspace-entrypoint.sh (creates admin) -> gosu admin thornbots-launch.sh.
+# Config: /etc/thornbots/launch.env. Blank ISAAC_ROS_WS_HOST, HOST_USER_UID/GID
+# and THORNBOTS_IMAGE are auto-detected. Prints [boot] lines with
+# /proc/uptime so each stage's boot time is in the journal.
+# see README.md for design rationale
 set -euo pipefail
 
-# ── Load configuration ──────────────────────────────────────────────────────
-ENV_FILE="/etc/thornbots/launch.env"
-if [[ ! -f "$ENV_FILE" ]]; then
-    echo "ERROR: Config file not found: $ENV_FILE" >&2
-    exit 1
-fi
+boot() { echo "[boot] $(cut -d' ' -f1 /proc/uptime)s $*"; }
+boot "thornbots-start.sh"
+
+ENV_FILE=/etc/thornbots/launch.env
+LIB_DIR=/usr/local/lib/thornbots
+[[ -f "$ENV_FILE" ]] || { echo "ERROR: $ENV_FILE not found" >&2; exit 1; }
+# Exported, so the bare `-e VAR` flags below pass them into the container.
+set -a
 # shellcheck source=/dev/null
 source "$ENV_FILE"
+set +a
 
-# ── Auto-discover ISAAC_ROS_WS_HOST if not set ─────────────────────────────
+# ── Workspace: first ~/workspaces/isaac_ros-dev, else ISAAC_ROS_WS in dotfiles
 if [[ -z "${ISAAC_ROS_WS_HOST:-}" ]]; then
-    echo "ISAAC_ROS_WS_HOST not set — auto-discovering..."
-    _discovered=""
-
-    for _candidate in /home/*/workspaces/isaac_ros-dev /root/workspaces/isaac_ros-dev; do
-        if [[ -d "$_candidate" ]]; then
-            _discovered="$_candidate"
-            break
-        fi
+    for c in /home/*/workspaces/isaac_ros-dev; do
+        [[ -d "$c" ]] && { ISAAC_ROS_WS_HOST="$c"; break; }
     done
-
-    if [[ -z "$_discovered" ]]; then
-        while IFS= read -r _cfg; do
-            [[ -f "$_cfg" ]] || continue
-            _ws=$(grep -E '^\s*(export\s+)?ISAAC_ROS_WS=' "$_cfg" 2>/dev/null \
-                  | head -1 \
-                  | sed "s|.*ISAAC_ROS_WS=[\"']*||; s|[\"' \t].*||")
-            [[ -z "$_ws" ]] && continue
-            _owner=$(stat -c '%U' "$_cfg" 2>/dev/null) || continue
-            _owner_home=$(getent passwd "$_owner" | cut -d: -f6) || continue
-            _ws="${_ws/\$HOME/$_owner_home}"
-            _ws="${_ws/\~/$_owner_home}"
-            if [[ -d "$_ws" ]]; then
-                _discovered="$_ws"
-                break
-            fi
-        done < <(find /home /root -maxdepth 2 \
-                      \( -name '.bashrc' -o -name '.bash_profile' \
-                         -o -name '.profile' -o -name '.zshrc' \) \
-                      2>/dev/null | sort)
-    fi
-
-    if [[ -z "$_discovered" ]]; then
-        echo "ERROR: Could not auto-discover ISAAC_ROS_WS_HOST." >&2
-        echo "       Set ISAAC_ROS_WS_HOST in $ENV_FILE and restart." >&2
-        exit 1
-    fi
-
-    ISAAC_ROS_WS_HOST="$_discovered"
-    echo "  Discovered workspace: $ISAAC_ROS_WS_HOST"
 fi
-
-# ── Auto-detect UID/GID from workspace owner if not set ────────────────────
-if [[ -z "${HOST_USER_UID:-}" ]]; then
-    HOST_USER_UID=$(stat -c '%u' "$ISAAC_ROS_WS_HOST")
-    echo "Auto-detected HOST_USER_UID: $HOST_USER_UID"
+if [[ -z "${ISAAC_ROS_WS_HOST:-}" ]]; then
+    while IFS= read -r cfg; do
+        ws=$(grep -E '^\s*(export\s+)?ISAAC_ROS_WS=' "$cfg" 2>/dev/null | head -1 |
+             sed "s|.*ISAAC_ROS_WS=[\"']*||; s|[\"' \t].*||; s|\${ISAAC_ROS_WS:-||; s|}\$||")
+        [[ -z "$ws" ]] && continue
+        home=$(getent passwd "$(stat -c %U "$cfg")" | cut -d: -f6)
+        ws="${ws/\$\{HOME\}/$home}"; ws="${ws/\$HOME/$home}"; ws="${ws/\~/$home}"
+        [[ -d "$ws" ]] && { ISAAC_ROS_WS_HOST="$ws"; break; }
+    done < <(find /home -maxdepth 2 \( -name .bashrc -o -name .profile \) 2>/dev/null | sort)
 fi
-if [[ -z "${HOST_USER_GID:-}" ]]; then
-    HOST_USER_GID=$(stat -c '%g' "$ISAAC_ROS_WS_HOST")
-    echo "Auto-detected HOST_USER_GID: $HOST_USER_GID"
+[[ -d "${ISAAC_ROS_WS_HOST:-}" ]] || {
+    echo "ERROR: no workspace found; set ISAAC_ROS_WS_HOST in $ENV_FILE" >&2; exit 1; }
+ISAAC_ROS_WS_HOST="${ISAAC_ROS_WS_HOST%/}"
+HOST_USER_UID="${HOST_USER_UID:-$(stat -c %u "$ISAAC_ROS_WS_HOST")}"
+HOST_USER_GID="${HOST_USER_GID:-$(stat -c %g "$ISAAC_ROS_WS_HOST")}"
+
+# ── Image: newest isaac-ros-cli build of our chain, unless pinned
+if [[ -z "${THORNBOTS_IMAGE:-}" ]]; then
+    THORNBOTS_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' nvcr.io/nvidia/isaac/ros |
+                      grep -m1 -E ':isaac_ros-realsense-thornbots_[0-9a-f]+-arm64-jetpack$' || true)
 fi
+[[ -n "$THORNBOTS_IMAGE" ]] && docker image inspect "$THORNBOTS_IMAGE" >/dev/null 2>&1 || {
+    echo "ERROR: image '${THORNBOTS_IMAGE:-}' not found." >&2
+    echo "       Build it once: isaac-ros activate --build-local" >&2; exit 1; }
 
-# ── Validate ────────────────────────────────────────────────────────────────
-if [[ ! -d "$ISAAC_ROS_WS_HOST" ]]; then
-    echo "ERROR: ISAAC_ROS_WS_HOST does not exist: $ISAAC_ROS_WS_HOST" >&2
-    exit 1
+# ── Model: the engine, or the ONNX TensorRT builds it from on first start
+ENGINE_HOST="${ISAAC_ROS_WS_HOST}/${ENGINE_REL_PATH}"
+ONNX_HOST="${ISAAC_ROS_WS_HOST}/${ONNX_REL_PATH}"
+if [[ ! -f "$ENGINE_HOST" && ! -f "$ONNX_HOST" ]]; then
+    echo "ERROR: neither $ENGINE_HOST nor $ONNX_HOST exists" >&2; exit 1
 fi
+[[ -f "$ENGINE_HOST" ]] || echo "No engine yet: TensorRT builds it from the ONNX (minutes)."
 
-MODEL_HOST_PATH="${ISAAC_ROS_WS_HOST}/${MODEL_REL_PATH}"
-if [[ ! -f "$MODEL_HOST_PATH" ]]; then
-    echo "ERROR: TensorRT engine not found: $MODEL_HOST_PATH" >&2
-    exit 1
-fi
-
-if [[ -z "$(docker image ls --quiet "$THORNBOTS_IMAGE" 2>/dev/null)" ]]; then
-    echo "ERROR: Docker image not found: $THORNBOTS_IMAGE" >&2
-    echo "       Run run_dev.sh once on this machine to build it, then re-enable the service." >&2
-    exit 1
-fi
-
-# ── Create output directories ───────────────────────────────────────────────
-mkdir -p "$SNAPSHOT_OUTPUT_HOST"
-
-# ── Log file setup ──────────────────────────────────────────────────────────
-# Each service run gets its own timestamped log file
-#   thornbots-YYYY-MM-DD-HH-MM-SS.log
-# so runs never overwrite each other. Unbounded: nothing is pruned, every run
-# is kept (systemd's RestartSec=15s guarantees restarts land on distinct
-# seconds, so filenames never collide; even a same-second collision just
-# appends via `tee -a`).
-#
-# Why no sequence numbers / pruning pipeline here: under `set -euo pipefail`,
-# an unguarded command in those pipelines that exits non-zero kills the whole
-# script before `docker run`. The previous sequence scheme crashed exactly this
-# way — on an empty log dir the `grep` in the "next sequence" lookup matched
-# nothing, exited 1, and pipefail propagated that into the `_last_seq=$(...)`
-# assignment, tripping `set -e` on every restart (an unbreakable crash loop).
-# `date` is the only command below and cannot fail with a fixed format string.
 LOG_DIR="${LOG_DIR:-/var/log/thornbots}"
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$SNAPSHOT_OUTPUT_HOST"
 LOG_FILE="${LOG_DIR}/thornbots-$(date +%Y-%m-%d-%H-%M-%S).log"
 
-echo "Logging to: $LOG_FILE"
+echo "Image   : ${THORNBOTS_IMAGE}"
+echo "WS host : ${ISAAC_ROS_WS_HOST} (uid/gid ${HOST_USER_UID}/${HOST_USER_GID})"
+echo "Log     : ${LOG_FILE}"
 
-# ── CUDA readiness probe ─────────────────────────────────────────────────────
-# workspace-entrypoint.sh restarts udev before handing off to LAUNCH_CMD.
-# On Jetson Orin this can leave the CUDA subsystem in an inconsistent state.
-# If NITROS starts too soon, cudaMemPoolCreate returns cudaErrorNotSupported
-# → GXF dereferences a null pool handle → SIGSEGV.
-#
-# We originally tried calling cuInit(0) via python3+ctypes, but libcuda.so.1
-# depends on Tegra-specific libraries (libnvrm_gpu.so, libnvos.so, etc.) that
-# are bind-mounted at container runtime AFTER the image's ldconfig cache was
-# built, so ctypes can never resolve them regardless of the path given.
-#
-# The reliable alternative: check for the three device nodes that together
-# mean the full CUDA subsystem is enumerated and memory allocation will work,
-# without needing to load any library at all:
-#
-#   /dev/nvhost-gpu       — CUDA compute engine
-#   /dev/nvmap            — Tegra memory manager  (needed for cudaMalloc)
-#   /dev/nvhost-ctrl-gpu  — GPU control channel   (needed for context mgmt)
-#
-# All three are visible inside the container via -v /dev/:/dev/.
-cat > /tmp/thornbots-cuda-probe.sh << 'PROBE'
-#!/bin/bash
-# Called from LAUNCH_CMD inside the container, before sourcing ROS.
-
-_wait() {
-    local desc="$1" check="$2" n=0 timeout=90
-    until eval "$check" 2>/dev/null; do
-        n=$((n + 2))
-        if (( n > timeout )); then
-            echo "[thornbots] ERROR: timed out waiting for ${desc} (${timeout}s)." >&2
-            exit 1
-        fi
-        echo "[thornbots] Waiting for ${desc} (${n}s elapsed)..."
-        sleep 2
-    done
-    echo "[thornbots] ${desc} OK."
-}
-
-# Stage 1: CUDA compute engine (usually instant after udev restart)
-_wait "/dev/nvhost-gpu" "[ -e /dev/nvhost-gpu ]"
-
-# Stage 2: memory manager + GPU control channel — these lag slightly behind
-# nvhost-gpu and are the specific devices used by cudaMalloc / cudaMemPoolCreate.
-# Waiting for all three gives a stronger guarantee than nvhost-gpu alone, and
-# avoids the library-loading issues of the cuInit/ctypes approach.
-_wait "CUDA memory devices" "[ -e /dev/nvmap ] && [ -e /dev/nvhost-ctrl-gpu ]"
-
-# Stage 3: fast-fail guard.  Verify the exact runtime-API calls NITROS makes
-# (cudaGetDeviceCount -> cudaFree(0) -> cudaDeviceGetDefaultMemPool ->
-# cudaMemPoolSetAttribute) actually succeed AS THIS USER before launching.  If
-# they don't, NITROS would otherwise segfault on a null CUDA mem-pool handle
-# (exit -11) with no usable error; here we surface the real cudaError instead.
-#
-# The classic failure this catches: the GPU device nodes are present but CUDA
-# returns cudaErrorNotSupported (801) on the first call — which on this stack
-# means the container's /dev shadowed the NVIDIA runtime's CDI GPU injection
-# (e.g. someone re-added `-v /dev:/dev`), leaving nvgpu nodes only root can use.
-# A short retry covers a genuine cold-boot readiness race; a persistent failure
-# is a misconfiguration, so we exit fast and let systemd restart/log it.
-sudo ldconfig 2>/dev/null || true
-_n=0; _timeout=20
-until _out="$(python3 /tmp/thornbots-mempool-probe.py 2>&1)"; do
-    _rc=$?
-    _n=$((_n + 2))
-    if (( _n > _timeout )); then
-        echo "[thornbots] ERROR: CUDA not usable after ${_timeout}s (${_out}, rc=${_rc})." >&2
-        echo "[thornbots]        err=801 here usually means /dev shadowed the CDI GPU injection." >&2
-        exit 1
-    fi
-    echo "[thornbots] CUDA not ready yet (${_out}, rc=${_rc}); retrying (${_n}s elapsed)..."
-    sleep 2
-done
-echo "[thornbots] CUDA ready (${_out}) — launching."
-PROBE
-chmod +x /tmp/thornbots-cuda-probe.sh
-
-# ── CUDA memory-pool probe (mirrors NITROS setCUDAMemoryPoolSize) ────────────
-# Uses the CUDA *runtime* API via libcudart, which is baked into the image and
-# resolves cleanly — unlike libcuda.so.1 (driver API), whose Tegra deps are
-# bind-mounted after the image's ldconfig cache was built and defeated the
-# earlier cuInit/ctypes approach.  Exit codes identify which call failed.
-cat > /tmp/thornbots-mempool-probe.py << 'PYEOF'
-import ctypes, sys
-
-_loaded = None
-rt = None
-for _name in ("libcudart.so", "libcudart.so.12", "libcudart.so.11.0",
-              "/usr/local/cuda/lib64/libcudart.so"):
-    try:
-        rt = ctypes.CDLL(_name)
-        _loaded = _name
-        break
-    except OSError:
-        continue
-if rt is None:
-    print("NO_CUDART"); sys.exit(2)
-
-# Decode CUDA error codes into human-readable strings for the journal.
-rt.cudaGetErrorString.restype = ctypes.c_char_p
-rt.cudaGetErrorString.argtypes = [ctypes.c_int]
-def estr(code):
-    try:
-        return rt.cudaGetErrorString(code).decode()
-    except Exception:
-        return "?"
-
-def fail(stage, code):
-    # cudaGetLastError clears the sticky error so a retry starts clean.
-    try: rt.cudaGetLastError()
-    except Exception: pass
-    print("%s err=%d(%s) lib=%s" % (stage, code, estr(code), _loaded))
-
-# Version / device sanity (does the runtime even see a GPU?).
-drv = ctypes.c_int(-1); run = ctypes.c_int(-1); ndev = ctypes.c_int(-1)
-rt.cudaDriverGetVersion(ctypes.byref(drv))
-rt.cudaRuntimeGetVersion(ctypes.byref(run))
-rc = rt.cudaGetDeviceCount(ctypes.byref(ndev))
-if rc != 0:
-    fail("DEVICE_COUNT_FAIL drv=%d run=%d" % (drv.value, run.value), rc)
-    sys.exit(6)
-
-# cudaFree(0) forces primary-context init (the first thing that touches the GPU).
-rc = rt.cudaFree(ctypes.c_void_p(0))
-if rc != 0:
-    fail("CTX_INIT_FAIL drv=%d run=%d ndev=%d" % (drv.value, run.value, ndev.value), rc)
-    sys.exit(3)
-
-# cudaDeviceGetDefaultMemPool(&pool, device=0)
-pool = ctypes.c_void_p()
-rc = rt.cudaDeviceGetDefaultMemPool(ctypes.byref(pool), 0)
-if rc != 0:
-    fail("GET_POOL_FAIL", rc); sys.exit(4)
-
-# cudaMemPoolSetAttribute(pool, cudaMemPoolAttrReleaseThreshold=4, &threshold)
-# This is the exact call that returns cudaErrorNotSupported in NITROS.
-val = ctypes.c_uint64(1 << 30)
-rc = rt.cudaMemPoolSetAttribute(pool, 4, ctypes.byref(val))
-if rc != 0:
-    fail("SET_ATTR_FAIL", rc); sys.exit(5)
-
-print("OK drv=%d run=%d ndev=%d lib=%s" % (drv.value, run.value, ndev.value, _loaded))
-sys.exit(0)
-PYEOF
-
-# ── Container-side paths ────────────────────────────────────────────────────
-CONTAINER_WS=/workspaces/isaac_ros-dev
-CONTAINER_MODEL="${CONTAINER_WS}/${MODEL_REL_PATH}"
-CONTAINER_SNAPSHOT=/data/realsense-captures
-CONTAINER_ROS_WS=/workspaces/ros2_ws   # packages baked into the image at build time
-
-# ── Build the command that runs inside the container as 'admin' ─────────────
-# Source ROS explicitly: bash is non-interactive here so /etc/bash.bashrc
-# is not sourced automatically.
-LAUNCH_CMD="bash /tmp/thornbots-cuda-probe.sh \
-  && source /opt/ros/humble/setup.bash \
-  && source ${CONTAINER_ROS_WS}/install/setup.bash \
-  && exec ros2 launch realsense_yolov8_nitros_bridge isaac_ros_yolov8_realsense.launch.py \
-       engine_file_path:=${CONTAINER_MODEL} \
-       confidence_threshold:=${CONFIDENCE_THRESHOLD:-0.6} \
-       nms_threshold:=${NMS_THRESHOLD:-0.45} \
-       center_sample_fraction:=${CENTER_SAMPLE_FRACTION:-0.25} \
-       center_weight:=${CENTER_WEIGHT:-1.0} \
-       priority_class_bonus:=${PRIORITY_CLASS_BONUS:-0.5} \
-       priority_class_ids:='${PRIORITY_CLASS_IDS:-[2,6]}' \
-       serial_device:=${SERIAL_DEVICE:-/dev/ttyTHS1} \
-       serial_baudrate:=${SERIAL_BAUDRATE:-115200} \
-       enable_sentry_pkg:=${ENABLE_SENTRY_PKG:-True} \
-       lidar_serial_port:=${LIDAR_SERIAL_DEVICE:-/host-dev/ttyUSB0} \
-       enable_snapshot:=${ENABLE_SNAPSHOT:-False} \
-       snapshot_output_dir:=${CONTAINER_SNAPSHOT}"
-
-echo "Starting Thornbots runtime container..."
-echo "  Image   : ${THORNBOTS_IMAGE}"
-echo "  WS host : ${ISAAC_ROS_WS_HOST}"
-echo "  UID/GID : ${HOST_USER_UID}/${HOST_USER_GID}"
-echo "  Model   : ${MODEL_HOST_PATH}"
-echo "  Log     : ${LOG_FILE}"
-
-# ── docker run ──────────────────────────────────────────────────────────────
-# Output is piped through 'tee' so it goes to both the journal (via systemd's
-# stdout capture) AND the persistent log file simultaneously.
-# We cannot use 'exec docker run' with a pipe, so instead we capture
-# docker's exit code from PIPESTATUS and exit with it explicitly so that
-# systemd's Restart=on-failure triggers correctly.
-#
-# Flag notes:
-#   --privileged        Full device access (RealSense USB, /dev/ttyTHS1, GPU).
-#   --network host      ROS2 DDS discovery needs host networking.
-#   --ipc=host          Shared memory for zero-copy NITROS transfers.
-#   --pid=host          Required for tegrastats and Jetson power APIs.
-#   --runtime nvidia    Enables GPU/CUDA via the NVIDIA container runtime.
-#   -v /dev:/host-dev   Live bind of the host's /dev for USB hotplug recovery
-#                       (e.g. CP210x ttyUSB* re-enumerating mid-run).  We do
-#                       NOT bind it over /dev: doing so shadows the NVIDIA
-#                       runtime's CDI GPU-device injection, and the resulting
-#                       host-presented nvgpu nodes are only usable by root —
-#                       the non-root 'admin' user then gets cudaErrorNotSupported
-#                       (801) on the first CUDA call and NITROS segfaults.
-#                       Keeping /dev as the CDI-managed one lets admin use CUDA;
-#                       consumers of hotplugging devices read them via /host-dev.
-#   --device /dev/ttyTHS1
-#                       Pin the on-chip UART at its normal path (it does not
-#                       hotplug, so a fixed node is correct and keeps its path
-#                       stable for the dji_serial_bridge).
-#   workspace-entrypoint.sh
-#                       Upstream Isaac ROS entrypoint: creates 'admin' user
-#                       matching HOST_USER_UID/GID, adds it to dialout
-#                       (patched by Dockerfile.thornbots), restarts udev.
-#                       Ends with: exec gosu admin <LAUNCH_CMD>
-
+# Flags follow isaac-ros-cli's run_dev.py for aarch64, minus X11 and the TTY.
+# /dev stays the one --privileged gives; the host's is at /host-dev for the
+# hotplugging lidar (README.md, "Why /host-dev").
 {
-    echo "[thornbots] Service started at $(date)"
+    boot "docker run"
     set +e
-    docker run \
+    docker run --rm \
         --name thornbots-runtime \
-        --privileged \
-        --network host \
-        --ipc=host \
-        --pid=host \
-        --runtime nvidia \
-        -e NVIDIA_VISIBLE_DEVICES="nvidia.com/gpu=all,nvidia.com/pva=all" \
+        --privileged --network host --ipc=host --pid=host \
+        --gpus all \
+        -e NVIDIA_VISIBLE_DEVICES=all \
         -e NVIDIA_DRIVER_CAPABILITIES=all \
-        -e ISAAC_ROS_WS="${CONTAINER_WS}" \
         -e USERNAME=admin \
         -e HOST_USER_UID="${HOST_USER_UID}" \
         -e HOST_USER_GID="${HOST_USER_GID}" \
-        -v "${ISAAC_ROS_WS_HOST}:${CONTAINER_WS}" \
-        -v "${SNAPSHOT_OUTPUT_HOST}:${CONTAINER_SNAPSHOT}" \
-        -v /tmp/:/tmp/ \
+        -e ISAAC_ROS_WS=/workspaces/isaac_ros-dev \
+        -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-1}" \
+        -e USE_WS_OVERLAY="${USE_WS_OVERLAY:-false}" \
+        -e ENGINE_PATH="/workspaces/isaac_ros-dev/${ENGINE_REL_PATH}" \
+        -e ONNX_PATH="/workspaces/isaac_ros-dev/${ONNX_REL_PATH}" \
+        -e CONFIDENCE_THRESHOLD -e NMS_THRESHOLD -e NUM_CLASSES \
+        -e CENTER_WEIGHT -e PRIORITY_CLASS_BONUS -e PRIORITY_CLASS_IDS \
+        -e LIDAR_SERIAL_DEVICE \
+        -e LOCALIZATION_MODE -e ENABLE_SNAPSHOT \
+        -e AUTO_LAUNCH_ARGS -e YOLO_LAUNCH_ARGS \
+        -v "${ISAAC_ROS_WS_HOST}:/workspaces/isaac_ros-dev" \
+        -v "${SNAPSHOT_OUTPUT_HOST}:/data/realsense-captures" \
+        -v "${LIB_DIR}:/opt/thornbots-startup:ro" \
         -v /etc/localtime:/etc/localtime:ro \
         -v /usr/bin/tegrastats:/usr/bin/tegrastats \
+        -v /sys/kernel/debug:/sys/kernel/debug:ro \
         -v /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra \
         -v /usr/src/jetson_multimedia_api:/usr/src/jetson_multimedia_api \
         -v /usr/share/vpi3:/usr/share/vpi3 \
+        -v /dev/bus/usb:/dev/bus/usb \
         -v /dev:/host-dev \
-        --device /dev/ttyTHS1 \
+        --workdir /workspaces/isaac_ros-dev \
         --entrypoint /usr/local/bin/scripts/workspace-entrypoint.sh \
         "${THORNBOTS_IMAGE}" \
-        /bin/bash -c "${LAUNCH_CMD}"
-    _exit="${PIPESTATUS[0]}"
+        /opt/thornbots-startup/thornbots-launch.sh
+    rc=$?
     set -e
-    echo "[thornbots] Container exited with code ${_exit} at $(date)"
-    exit "$_exit"
+    boot "container exited with code ${rc}"
+    exit "$rc"
 } 2>&1 | tee -a "$LOG_FILE"
+exit "${PIPESTATUS[0]}"
