@@ -25,11 +25,14 @@ boot "CUDA ready ($out)"
 # /etc/bash.bashrc sets these for interactive shells only.
 export FASTRTPS_DEFAULT_PROFILES_FILE=/etc/fastdds/profile.xml
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+# ROS setup scripts read unset variables, so -u is off while they run.
+set +u
 source /opt/ros/jazzy/setup.bash
 source /workspaces/ros2_ws/install/setup.bash
 if [[ "${USE_WS_OVERLAY:-false}" == true && -f "$ISAAC_ROS_WS/install/setup.bash" ]]; then
     source "$ISAAC_ROS_WS/install/setup.bash"
 fi
+set -u
 echo "[thornbots] thornbots_pkg from $(ros2 pkg prefix thornbots_pkg)"
 
 model_args=(engine_file_path:="$ENGINE_PATH")
