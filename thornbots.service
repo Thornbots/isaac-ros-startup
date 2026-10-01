@@ -1,66 +1,26 @@
-# /etc/systemd/system/thornbots.service
-#
-# Thornbots Isaac ROS vision pipeline — boot service.
-#
-# Install:
-#   sudo bash install.sh          ← recommended (auto-detects workspace)
-#
-#   — or manually —
-#   sudo cp thornbots.service /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable thornbots
-#   sudo systemctl start thornbots
-#
-# Logs:
-#   journalctl -u thornbots -f
-#
-# Manual run (same as what systemd does, useful for debugging):
-#   sudo /usr/local/bin/thornbots-start.sh
+# /etc/systemd/system/thornbots.service: the robot stack at boot (Jazzy).
+# Installed by install.sh. Logs: journalctl -u thornbots -f
+# Debug by hand: sudo /usr/local/bin/thornbots-start.sh
+# No network-online wait: the robot runs air-gapped, and waiting costs boot
+# time. Nodes started before Wi-Fi is up aren't reachable over tailscale.
+# see README.md for design rationale
 
 [Unit]
-Description=Thornbots Isaac ROS Vision Pipeline (YOLO + RealSense + DJI)
-Documentation=https://github.com/Thornbots/realsense-yolov8-nitros-bridge
-
-# Docker must be up before we try to run a container.
-After=docker.service network-online.target
-Wants=network-online.target
+Description=Thornbots robot stack (Isaac ROS container)
+Documentation=https://github.com/Thornbots/isaac-ros-startup
+After=docker.service
 Requires=docker.service
 
 [Service]
 Type=simple
-
-# Load runtime config (ISAAC_ROS_WS_HOST, thresholds, etc.)
-# Blank fields are auto-detected by thornbots-start.sh at runtime.
-EnvironmentFile=/etc/thornbots/launch.env
-
-# Remove any stale container from a previous (possibly crashed) run.
-# The '-' prefix means systemd ignores a non-zero exit from this command.
 ExecStartPre=-/usr/bin/docker rm -f thornbots-runtime
-
-# Give hardware devices time to enumerate on cold boot before the first start.
-# If you still see "device not found" in logs, increase this.
-ExecStartPre=/bin/sleep 5
-
-# The start script validates the image/model exist, then calls 'exec docker run'
-# so the docker process IS the service process — systemd tracks it directly.
 ExecStart=/usr/local/bin/thornbots-start.sh
-
-# Graceful shutdown: ask the container to stop, then kill if it won't.
 ExecStop=/usr/bin/docker stop --time 15 thornbots-runtime
-
-# On failure, wait 15 s then try again. The RealSense or serial port may not
-# be fully enumerated immediately after boot; a couple of retries handles that.
 Restart=on-failure
-RestartSec=15s
-
-# Pipe container stdout/stderr straight into the journal.
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=thornbots
-
-# Don't kill the process on timeout during stop — let docker stop handle it.
+RestartSec=5s
 TimeoutStopSec=30
-KillMode=none
+KillMode=mixed
+SyslogIdentifier=thornbots
 
 [Install]
 WantedBy=multi-user.target
