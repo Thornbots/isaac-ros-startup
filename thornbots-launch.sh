@@ -25,6 +25,10 @@ boot "CUDA ready ($out)"
 # /etc/bash.bashrc sets these for interactive shells only.
 export FASTRTPS_DEFAULT_PROFILES_FILE=/etc/fastdds/profile.xml
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+# Readable node-side times and no ANSI colour in the logs. These times step
+# with the clock; log-stamp.py's uptime prefix doesn't.
+export RCUTILS_CONSOLE_OUTPUT_FORMAT='[{severity}] [{date_time_with_ms}] [{name}]: {message}'
+export RCUTILS_COLORIZED_OUTPUT=0
 # ROS setup scripts read unset variables, so -u is off while they run.
 set +u
 source /opt/ros/jazzy/setup.bash
