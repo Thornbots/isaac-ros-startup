@@ -27,7 +27,9 @@ pulling changes here.
 | | |
 |---|---|
 | Logs, live | `journalctl -u thornbots -f` |
-| Logs, per run | `$LOG_DIR/thornbots-run<N>.log`, newest at `$LOG_DIR/latest.log`, never pruned |
+| Logs, per run | `$LOG_DIR/thornbots-run<N>.log`, newest at `$LOG_DIR/latest.log` |
+| Bag and node logs, per run | `$LOG_DIR/thornbots-run<N>/bag/` (MCAP) and `ros/`, newest at `$LOG_DIR/latest/` |
+| Read the bag | `ros2 bag info <dir>/bag`, or open its `.mcap` files in Foxglove |
 | Restart after editing `launch.env` | `sudo systemctl restart thornbots` |
 | Shell in the running stack | `docker exec -it -u admin thornbots-runtime bash` |
 | Stop for development | `sudo systemctl stop thornbots` (and `disable` to keep it off across boots) |
@@ -83,6 +85,21 @@ per-line time (`{date_time_with_ms}`) steps with the clock. Files are named
 by a run counter (`/var/lib/thornbots/run-count`), never the date, and sort
 in run order; each starts with its boot ID, image and workspace commit. The file is fsynced every second,
 because a battery pull is how most runs end.
+
+**Per-run bag.** `thornbots-launch.sh` records one MCAP bag per run:
+`/rosout` (every node's log, with severity, node and stamp as fields) and
+the localization, lidar, referee and CV topics, but no images. It is split
+into 60 s files, written without a cache in 256 KiB zstd chunks
+(`mcap-storage.yaml`), so a battery pull loses about a second. That bag has
+no `metadata.yaml`; `ros2 bag reindex <dir>/bag -s mcap` rebuilds it (Foxglove
+opens the `.mcap` files without it). The recorder is stopped with SIGTERM:
+as a background job of a non-interactive shell it starts with SIGINT
+ignored. It isn't watched: if it dies, the stack keeps running.
+`ENABLE_BAG=false` turns it off.
+
+**Pruning.** At each start, `thornbots-start.sh` deletes the oldest runs
+(text log and directory) while the log disk has under `LOG_MIN_FREE_GB`
+(20) free, always keeping the newest `LOG_KEEP_RUNS` (5).
 
 **RemoveIPC.** The stack runs as the workspace owner's UID, the same one
 you ssh in as. logind's default `RemoveIPC=yes` deletes that UID's

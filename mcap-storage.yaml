@@ -1,0 +1,7 @@
+# rosbag2 MCAP storage config for the per-run bag (thornbots-launch.sh).
+# 256 KiB chunks: the writer holds a whole chunk in memory, so the default
+# (768 KiB) leaves more unwritten at a battery pull. A killed bag's files
+# open after `ros2 bag reindex <dir>`.
+compression: "Zstd"
+compressionLevel: "Fast"
+chunkSize: 262144

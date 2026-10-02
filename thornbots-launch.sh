@@ -29,6 +29,10 @@ export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 # with the clock; log-stamp.py's uptime prefix doesn't.
 export RCUTILS_CONSOLE_OUTPUT_FORMAT='[{severity}] [{date_time_with_ms}] [{name}]: {message}'
 export RCUTILS_COLORIZED_OUTPUT=0
+# Node log files and launch.log beside the run's text log, not in the
+# container's ~/.ros, which --rm deletes.
+RUN_DIR="${THORNBOTS_RUN_DIR:-/tmp/thornbots-run}"
+export ROS_LOG_DIR="$RUN_DIR/ros"
 # ROS setup scripts read unset variables, so -u is off while they run.
 set +u
 source /opt/ros/jazzy/setup.bash
@@ -68,8 +72,33 @@ env --default-signal=INT ros2 launch realsense_yolov8_nitros_bridge isaac_ros_yo
 yolo_pid=$!
 boot "launches started (auto $auto_pid, yolo $yolo_pid)"
 
-# docker stop sends SIGTERM here; ros2 launch shuts down cleanly on SIGINT.
-stop() { kill -INT "$auto_pid" "$yolo_pid" 2>/dev/null; wait; }
+# One MCAP bag per run, no images: /rosout plus what judging localization
+# and CV after a match needs. No cache and small chunks (mcap-storage.yaml),
+# so a battery pull loses about a second. Not watched below: a recorder
+# failure must not stop the robot.
+bag_topics=(
+    /rosout /diagnostics /tf /tf_static /map
+    /scan /scan_odom /scan_odom/quality /odom /pose /amcl_pose
+    /localization/odom /localization/map_odom
+    /dji_serial_bridge/ref_sys /dji_serial_bridge/relocalize
+    /dji_serial_bridge/cv_target
+    /detections_output /cv/panel_detections /cv/panel_detection
+    /cv/robot_panels /cv/panel_polygon /cv/target_state /cv/target
+    /cv/tracker/measurement
+)
+bag_pid=
+if [[ "${ENABLE_BAG:-true}" == true ]]; then
+    env --default-signal=INT ros2 bag record -s mcap \
+        --storage-config-file /opt/thornbots-startup/mcap-storage.yaml \
+        --max-bag-duration 60 --max-cache-size 0 \
+        -o "$RUN_DIR/bag" --topics "${bag_topics[@]}" &
+    bag_pid=$!
+    boot "bag recording to $RUN_DIR/bag (pid $bag_pid)"
+fi
+
+# docker stop sends SIGTERM here; ros2 launch and the recorder shut down
+# cleanly on SIGINT.
+stop() { kill -INT "$auto_pid" "$yolo_pid" $bag_pid 2>/dev/null; wait; }
 trap 'stop; exit 0' TERM INT
 wait -n "$auto_pid" "$yolo_pid"
 rc=$?
