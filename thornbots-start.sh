@@ -94,6 +94,17 @@ done
     if (( ${#pruned[@]} )); then
         echo "Pruned  : ${pruned[*]} (under ${LOG_MIN_FREE_GB:-20} GB free)"
     fi
+    # nvidia-cdi-refresh can run before udev gives the GPU nodes group video,
+    # and that spec makes them root-only in the container: CUDA err=100 for
+    # admin (sentry, 2026-10-01). Regenerate it if it disagrees with /dev.
+    cdi=/var/run/cdi/nvidia.yaml
+    if [[ -f "$cdi" ]] && ! grep -A5 'path: /dev/nvhost-gpu$' "$cdi" |
+            grep -q "gid: $(stat -c %g /dev/nvhost-gpu)$"; then
+        echo "CDI spec stale (GPU node group differs); regenerating $cdi"
+        nvidia-ctk cdi generate --output="$cdi" >/dev/null 2>&1 ||
+            echo "WARNING: nvidia-ctk cdi generate failed"
+        boot "CDI spec regenerated"
+    fi
     boot "docker run"
     set +e
     docker run --rm \
