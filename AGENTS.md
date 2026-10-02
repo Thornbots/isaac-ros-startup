@@ -13,6 +13,9 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
   bag") are tested only in the Mac dev container, not yet on a robot.
   Open: does the robot image ship `rosbag2_storage_mcap`? A missing
   recorder only logs an error; the stack runs on.
+- `thornbots-start.sh` regenerates `/var/run/cdi/nvidia.yaml` when its
+  `/dev/nvhost-gpu` gid differs from the node's (CUDA err=100 for admin on
+  the sentry, 2026-10-01). Untested: not yet run on a robot.
 - Needs `RemoveIPC=no` (install.sh, README.md "RemoveIPC"). Without it an
   ssh logout breaks Fast DDS shared memory and the localization lifecycle.
 - The first start after a new ONNX builds the TensorRT engine (141 s on
