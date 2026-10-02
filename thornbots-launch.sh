@@ -45,7 +45,7 @@ model_args=(engine_file_path:="$ENGINE_PATH")
 # shellcheck disable=SC2086  # *_LAUNCH_ARGS are space-separated name:=value lists
 ros2 launch thornbots_pkg auto.launch.py \
     lidar_serial_port:="${LIDAR_SERIAL_DEVICE:-/host-dev/rplidar}" \
-    localization_mode:="${LOCALIZATION_MODE:-amcl}" \
+    localization_mode:="${LOCALIZATION_MODE:-mapping}" \
     center_weight:="${CENTER_WEIGHT:-1.0}" \
     priority_class_bonus:="${PRIORITY_CLASS_BONUS:-0.5}" \
     priority_class_ids:="${PRIORITY_CLASS_IDS:-[2,6]}" \
