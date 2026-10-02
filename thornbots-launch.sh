@@ -42,8 +42,11 @@ echo "[thornbots] thornbots_pkg from $(ros2 pkg prefix thornbots_pkg)"
 model_args=(engine_file_path:="$ENGINE_PATH")
 [[ -f "$ENGINE_PATH" ]] || model_args+=(model_file_path:="$ONNX_PATH")
 
+# Background jobs of this non-interactive shell start with SIGINT ignored,
+# and ros2 launch keeps it that way, so stop()'s SIGINT would never land.
+# env restores the default before exec.
 # shellcheck disable=SC2086  # *_LAUNCH_ARGS are space-separated name:=value lists
-ros2 launch thornbots_pkg auto.launch.py \
+env --default-signal=INT ros2 launch thornbots_pkg auto.launch.py \
     lidar_serial_port:="${LIDAR_SERIAL_DEVICE:-/host-dev/rplidar}" \
     localization_mode:="${LOCALIZATION_MODE:-mapping}" \
     center_weight:="${CENTER_WEIGHT:-1.0}" \
@@ -53,7 +56,7 @@ ros2 launch thornbots_pkg auto.launch.py \
 auto_pid=$!
 
 # shellcheck disable=SC2086
-ros2 launch realsense_yolov8_nitros_bridge isaac_ros_yolov8_realsense.launch.py \
+env --default-signal=INT ros2 launch realsense_yolov8_nitros_bridge isaac_ros_yolov8_realsense.launch.py \
     "${model_args[@]}" \
     num_classes:="${NUM_CLASSES:-8}" \
     confidence_threshold:="${CONFIDENCE_THRESHOLD:-0.25}" \
