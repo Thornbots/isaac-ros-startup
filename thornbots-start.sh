@@ -65,8 +65,23 @@ LOG_DIR="${LOG_DIR:-/var/log/thornbots}"
 mkdir -p "$LOG_DIR" "$SNAPSHOT_OUTPUT_HOST" /var/lib/thornbots
 RUN=$(( $(cat /var/lib/thornbots/run-count 2>/dev/null || echo 0) + 1 ))
 echo "$RUN" > /var/lib/thornbots/run-count
-LOG_FILE="${LOG_DIR}/thornbots-run$(printf %05d "$RUN").log"
+RUN_NAME="thornbots-run$(printf %05d "$RUN")"
+LOG_FILE="${LOG_DIR}/${RUN_NAME}.log"
 ln -sfn "$(basename "$LOG_FILE")" "${LOG_DIR}/latest.log"
+# The run's bag and ROS node logs, written in the container as the WS owner.
+install -d -o "$HOST_USER_UID" -g "$HOST_USER_GID" "${LOG_DIR}/${RUN_NAME}"
+ln -sfn "$RUN_NAME" "${LOG_DIR}/latest"
+
+# ── Prune: oldest runs first while the disk has under LOG_MIN_FREE_GB free,
+# always keeping the newest LOG_KEEP_RUNS.
+pruned=()
+mapfile -t old < <(cd "$LOG_DIR" && ls -d thornbots-run[0-9]*.log 2>/dev/null |
+                   sed 's/\.log$//' | sort | head -n "-${LOG_KEEP_RUNS:-5}")
+for r in "${old[@]}"; do
+    (( $(df --output=avail -BG "$LOG_DIR" | tail -1 | tr -dc 0-9) < ${LOG_MIN_FREE_GB:-20} )) || break
+    rm -rf "${LOG_DIR:?}/${r}" "${LOG_DIR:?}/${r}.log"
+    pruned+=("$r")
+done
 
 # Flags follow isaac-ros-cli's run_dev.py for aarch64, minus X11 and the TTY.
 # /dev stays the one --privileged gives; the host's is at /host-dev for the
@@ -75,7 +90,10 @@ ln -sfn "$(basename "$LOG_FILE")" "${LOG_DIR}/latest.log"
     echo "Run     : ${RUN}, boot $(cut -c1-8 /proc/sys/kernel/random/boot_id), uptime $(cut -d' ' -f1 /proc/uptime)s"
     echo "Image   : ${THORNBOTS_IMAGE}"
     echo "WS host : ${ISAAC_ROS_WS_HOST} (uid/gid ${HOST_USER_UID}/${HOST_USER_GID}), src at $(git -c safe.directory='*' -C "${ISAAC_ROS_WS_HOST}/src" describe --always --dirty 2>/dev/null || echo '?')"
-    echo "Log     : ${LOG_FILE}"
+    echo "Log     : ${LOG_FILE}, bag and ROS logs in ${LOG_DIR}/${RUN_NAME}/"
+    if (( ${#pruned[@]} )); then
+        echo "Pruned  : ${pruned[*]} (under ${LOG_MIN_FREE_GB:-20} GB free)"
+    fi
     boot "docker run"
     set +e
     docker run --rm \
@@ -96,8 +114,10 @@ ln -sfn "$(basename "$LOG_FILE")" "${LOG_DIR}/latest.log"
         -e CENTER_WEIGHT -e PRIORITY_CLASS_BONUS -e PRIORITY_CLASS_IDS \
         -e LIDAR_SERIAL_DEVICE \
         -e LOCALIZATION_MODE -e ENABLE_SNAPSHOT \
-        -e AUTO_LAUNCH_ARGS -e YOLO_LAUNCH_ARGS \
+        -e AUTO_LAUNCH_ARGS -e YOLO_LAUNCH_ARGS -e ENABLE_BAG \
+        -e THORNBOTS_RUN_DIR="/data/thornbots-logs/${RUN_NAME}" \
         -v "${ISAAC_ROS_WS_HOST}:/workspaces/isaac_ros-dev" \
+        -v "${LOG_DIR}:/data/thornbots-logs" \
         -v "${SNAPSHOT_OUTPUT_HOST}:/data/realsense-captures" \
         -v "${LIB_DIR}:/opt/thornbots-startup:ro" \
         -v /etc/localtime:/etc/localtime:ro \

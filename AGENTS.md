@@ -9,6 +9,10 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
   launches up in 17.6 s, engine loaded about 4 s later. Not yet run on
   hero or standard. Goal: power-on to a running stack under 1 min
   (ROADMAP track C).
+- Per-run MCAP bag, ROS node logs and pruning (README.md "Per-run
+  bag") are tested only in the Mac dev container, not yet on a robot.
+  Open: does the robot image ship `rosbag2_storage_mcap`? A missing
+  recorder only logs an error; the stack runs on.
 - Needs `RemoveIPC=no` (install.sh, README.md "RemoveIPC"). Without it an
   ssh logout breaks Fast DDS shared memory and the localization lifecycle.
 - The first start after a new ONNX builds the TensorRT engine (141 s on
