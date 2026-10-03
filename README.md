@@ -88,7 +88,11 @@ because a battery pull is how most runs end.
 
 **Per-run bag.** `thornbots-launch.sh` records one MCAP bag per run:
 `/rosout` (every node's log, with severity, node and stamp as fields) and
-the localization, lidar, referee and CV topics, but no images. It is split
+the localization, lidar, referee and CV topics (`/cv/target` and
+`/dji_serial_bridge/cv_target` included), and every colour frame as JPEG on
+`/color/image_raw/compressed`. The RealSense node publishes raw only, so an
+`image_transport republish` node encodes it (`VIDEO_JPEG_QUALITY`, default
+80; `ENABLE_VIDEO=false` drops it). It is split
 into 60 s files, written without a cache in 256 KiB zstd chunks
 (`mcap-storage.yaml`), so a battery pull loses about a second. That bag has
 no `metadata.yaml`; `ros2 bag reindex <dir>/bag -s mcap` rebuilds it (Foxglove

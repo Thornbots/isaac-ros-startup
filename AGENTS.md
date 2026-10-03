@@ -9,10 +9,14 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
   launches up in 17.6 s, engine loaded about 4 s later. Not yet run on
   hero or standard. Goal: power-on to a running stack under 1 min
   (ROADMAP track C).
-- Per-run MCAP bag, ROS node logs and pruning (README.md "Per-run
-  bag") are tested only in the Mac dev container, not yet on a robot.
-  Open: does the robot image ship `rosbag2_storage_mcap`? A missing
-  recorder only logs an error; the stack runs on.
+- Per-run MCAP bag and ROS node logs run on the sentry (2026-10-03),
+  JPEG colour video included (~8.5 GB/h). Pruning is untested on a robot.
+- The sentry's `/etc/thornbots/launch.env` has `LOCALIZATION_MODE=none`
+  (2026-10-03) to dodge the `/pose` type clash (ROADMAP T26) until it's
+  fixed; the old file is `launch.env.bak-20261003-mapping`.
+- Open: a ROS process started in the running container after the stack
+  (`docker exec`) discovers few or none of its nodes (2026-10-03).
+  Read the bag instead.
 - `thornbots-start.sh` regenerates `/var/run/cdi/nvidia.yaml` when its
   `/dev/nvhost-gpu` gid differs from the node's (CUDA err=100 for admin on
   the sentry, 2026-10-01). Untested: not yet run on a robot.

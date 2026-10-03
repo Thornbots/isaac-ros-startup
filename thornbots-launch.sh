@@ -72,10 +72,22 @@ env --default-signal=INT ros2 launch realsense_yolov8_nitros_bridge isaac_ros_yo
 yolo_pid=$!
 boot "launches started (auto $auto_pid, yolo $yolo_pid)"
 
-# One MCAP bag per run, no images: /rosout plus what judging localization
-# and CV after a match needs. No cache and small chunks (mcap-storage.yaml),
-# so a battery pull loses about a second. Not watched below: a recorder
-# failure must not stop the robot.
+# Every colour frame as JPEG on /color/image_raw/compressed, for the bag.
+# The RealSense node publishes raw only (55 MB/s at 640x480x60).
+video_pid=
+if [[ "${ENABLE_BAG:-true}" == true && "${ENABLE_VIDEO:-true}" == true ]]; then
+    env --default-signal=INT ros2 run image_transport republish --ros-args \
+        -r __node:=video_republisher \
+        -p in_transport:=raw -p out_transport:=compressed \
+        -p out.compressed.jpeg_quality:="${VIDEO_JPEG_QUALITY:-80}" \
+        -r in:=/color/image_raw -r out/compressed:=/color/image_raw/compressed &
+    video_pid=$!
+fi
+
+# One MCAP bag per run: /rosout, the colour video (above) and what judging
+# localization and CV after a match needs. No cache and small chunks
+# (mcap-storage.yaml), so a battery pull loses about a second. Not watched
+# below: a recorder failure must not stop the robot.
 bag_topics=(
     /rosout /diagnostics /tf /tf_static /map
     /scan /scan_odom /scan_odom/quality /odom /pose /amcl_pose
@@ -86,6 +98,7 @@ bag_topics=(
     /cv/robot_panels /cv/panel_polygon /cv/target_state /cv/target
     /cv/tracker/measurement
 )
+[[ -n "$video_pid" ]] && bag_topics+=(/color/image_raw/compressed /color/camera_info)
 bag_pid=
 if [[ "${ENABLE_BAG:-true}" == true ]]; then
     env --default-signal=INT ros2 bag record -s mcap \
@@ -98,7 +111,7 @@ fi
 
 # docker stop sends SIGTERM here; ros2 launch and the recorder shut down
 # cleanly on SIGINT.
-stop() { kill -INT "$auto_pid" "$yolo_pid" $bag_pid 2>/dev/null; wait; }
+stop() { kill -INT "$auto_pid" "$yolo_pid" $bag_pid $video_pid 2>/dev/null; wait; }
 trap 'stop; exit 0' TERM INT
 wait -n "$auto_pid" "$yolo_pid"
 rc=$?
