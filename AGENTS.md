@@ -34,12 +34,12 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
 - The first start after a new ONNX builds the TensorRT engine (141 s on
   the sentry). amcl dropped during that build too, put down to CPU at the
   time; RemoveIPC fits it better. Unretested with RemoveIPC=no.
-- The robot can't build its image on one battery: isaac-ros-cli checks
-  layers with `docker manifest inspect` (registry only), so it recompiles
-  librealsense over a base loaded with `docker load`. Build it on the Mac
-  with `isaac_ros_common/scripts/build_robot_image.sh <robot>`, which
-  pushes to a registry on the Mac and pulls over `ssh -R` (only new layers
-  cross). `thornbots-start.sh` picks the newest
+- Each robot builds its own image (the user, 2026-10-03), on wall power:
+  `isaac_ros_common/scripts/build_robot_image.sh` with no host args. 29 min
+  on `ts-nano-dev` with its lower layers cached; ROADMAP T29 is cutting
+  that. With no BuildKit cache (image pulled, not built) it recompiles
+  librealsense once. The Mac's `build_robot_image.sh <robot>` (push, pull
+  over `ssh -R`) is a stopgap. `thornbots-start.sh` picks the newest
   `isaac_ros-realsense-thornbots_<hash>-arm64-jetpack` tag.
 
 ## Rules
