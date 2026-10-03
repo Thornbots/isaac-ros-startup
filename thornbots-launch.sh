@@ -84,6 +84,21 @@ if [[ "${ENABLE_BAG:-true}" == true && "${ENABLE_VIDEO:-true}" == true ]]; then
     video_pid=$!
 fi
 
+# Read-only Foxglove websocket on FOXGLOVE_PORT: viewers can't publish, call
+# services or set parameters. Started with the stack, so it sees every node.
+foxglove_pid=
+if [[ "${ENABLE_FOXGLOVE:-false}" == true ]]; then
+    if ros2 pkg prefix foxglove_bridge >/dev/null 2>&1; then
+        env --default-signal=INT ros2 run foxglove_bridge foxglove_bridge --ros-args \
+            -p port:="${FOXGLOVE_PORT:-8765}" -p address:=0.0.0.0 \
+            -p "capabilities:=[connectionGraph, assets]" &
+        foxglove_pid=$!
+        boot "foxglove bridge on :${FOXGLOVE_PORT:-8765} (pid $foxglove_pid)"
+    else
+        echo "[thornbots] ENABLE_FOXGLOVE=true but foxglove_bridge isn't in this image" >&2
+    fi
+fi
+
 # One MCAP bag per run: /rosout, the colour video (above) and what judging
 # localization and CV after a match needs. No cache and small chunks
 # (mcap-storage.yaml), so a battery pull loses about a second. Not watched
@@ -111,7 +126,7 @@ fi
 
 # docker stop sends SIGTERM here; ros2 launch and the recorder shut down
 # cleanly on SIGINT.
-stop() { kill -INT "$auto_pid" "$yolo_pid" $bag_pid $video_pid 2>/dev/null; wait; }
+stop() { kill -INT "$auto_pid" "$yolo_pid" $bag_pid $video_pid $foxglove_pid 2>/dev/null; wait; }
 trap 'stop; exit 0' TERM INT
 wait -n "$auto_pid" "$yolo_pid"
 rc=$?
