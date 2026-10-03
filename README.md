@@ -7,8 +7,9 @@ version is on the `humble` branch.
 
 ## Install
 
-Build the image once with `isaac-ros activate --build-local` (see the
-workspace README), then:
+Build the image once, on wall power, with
+`isaac_ros_common/scripts/build_robot_image.sh` (see
+`isaac_ros_common/docker/README.md`), then:
 
 ```bash
 sudo bash install.sh            # or: --ws /path/to/isaac_ros-dev
