@@ -13,7 +13,8 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
   JPEG colour video included (~8.5 GB/h). Pruning is untested on a robot.
 - The sentry's `/etc/thornbots/launch.env` has `LOCALIZATION_MODE=none`
   (2026-10-03) to dodge the `/pose` type clash (ROADMAP T26) until it's
-  fixed; the old file is `launch.env.bak-20261003-mapping`.
+  fixed, and `AUTO_LAUNCH_ARGS=use_rf2o:=false` (rf2o ran away to 265 m
+  at boot while the robot stood still). Old files: `launch.env.bak-*`.
 - Open: a ROS process started in the running container after the stack
   (`docker exec`) discovers few or none of its nodes (2026-10-03).
   Read the bag instead.
