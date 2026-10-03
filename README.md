@@ -89,6 +89,20 @@ by a run counter (`/var/lib/thornbots/run-count`), never the date, and sort
 in run order; each starts with its boot ID, image and workspace commit. The file is fsynced every second,
 because a battery pull is how most runs end.
 
+**Clock steps restart the stack.** A wall-clock step mid-run breaks every
+node's stamps: on the sentry (2026-10-03) the camera's
+`component_container_mt` aborted (`cannot store a negative time point in
+rclcpp::Time`), and on 2026-10-01 a 50 s step took amcl down without
+crashing anything. Two steps happen at boot. The sentry's `rtc0`
+(`nvvrs-pseq-rtc`) has no battery and loads as a module ~10 s in; as the
+kernel's hctosys RTC it then sets the clock to 1970, undoing timesyncd's
+restore of its saved time. So `thornbots-start.sh` waits for that (up to
+20 s uptime) and restores the saved time itself before `docker run`. The
+second is NTP's first sync once Wi-Fi is up (~50 s), which no boot-time
+wait can cover air-gapped. A watcher compares wall time to `/proc/uptime`
+every second; on a step over 1 s it stops the container and exits 75, so
+systemd restarts the stack. Air-gapped there's no NTP and no restart.
+
 **Per-run bag.** `thornbots-launch.sh` records one MCAP bag per run:
 `/rosout` (every node's log, with severity, node and stamp as fields) and
 the localization, lidar, referee and CV topics (`/cv/target` and

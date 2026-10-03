@@ -20,6 +20,17 @@ set -a
 source "$ENV_FILE"
 set +a
 
+# ── Clock: rtc0 (nvvrs-pseq-rtc on the sentry, no battery) loads as a module
+# ~10 s into boot and sets the clock to 1970, undoing timesyncd's restore of
+# its saved time. Wait for that (up to 20 s uptime), then redo the restore.
+until [[ "$(cat /sys/class/rtc/rtc0/hctosys 2>/dev/null)" == 1 ]] ||
+      (( $(cut -d. -f1 /proc/uptime) >= 20 )); do sleep 0.2; done
+saved=$(stat -c %Y /var/lib/systemd/timesync/clock 2>/dev/null || echo 0)
+if (( $(date +%s) < saved )); then
+    boot "clock $(date -u '+%F %T') UTC is behind timesyncd's saved time; restoring"
+    date -s "@$saved" >/dev/null || echo "WARNING: date -s failed" >&2
+fi
+
 # ── Workspace: first ~/workspaces/isaac_ros-dev, else ISAAC_ROS_WS in dotfiles
 if [[ -z "${ISAAC_ROS_WS_HOST:-}" ]]; then
     for c in /home/*/workspaces/isaac_ros-dev; do
@@ -105,6 +116,24 @@ done
             echo "WARNING: nvidia-ctk cdi generate failed"
         boot "CDI spec regenerated"
     fi
+    # A wall-clock step (NTP's first sync) breaks every node's stamps: the
+    # camera container aborts on negative times, amcl drops out. Stop the
+    # stack on one; the exit code below makes systemd restart it.
+    step_flag=/run/thornbots-clock-step
+    rm -f "$step_flag"
+    offset() { awk -v w="$(date +%s.%N)" '{ printf "%.1f", w - $1 }' /proc/uptime; }
+    (
+        base=$(offset)
+        while sleep 1; do
+            step=$(awk -v a="$(offset)" -v b="$base" 'BEGIN { d = a - b; if (d > 1 || d < -1) printf "%+.1f", d }')
+            [[ -z "$step" ]] && continue
+            echo "[clock] wall clock stepped ${step} s; restarting the stack"
+            touch "$step_flag"
+            docker stop --time 15 thornbots-runtime >/dev/null
+            exit
+        done
+    ) &
+    watch_pid=$!
     boot "docker run"
     set +e
     docker run --rm \
@@ -146,6 +175,8 @@ done
         /opt/thornbots-startup/thornbots-launch.sh
     rc=$?
     set -e
+    kill "$watch_pid" 2>/dev/null || true
+    [[ -e "$step_flag" ]] && rc=75  # EX_TEMPFAIL: Restart=on-failure fires
     boot "container exited with code ${rc}"
     exit "$rc"
 } 2>&1 | python3 "${LIB_DIR}/log-stamp.py" "$LOG_FILE"
