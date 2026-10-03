@@ -48,9 +48,11 @@ model_args=(engine_file_path:="$ENGINE_PATH")
 
 # Background jobs of this non-interactive shell start with SIGINT ignored,
 # and ros2 launch keeps it that way, so stop()'s SIGINT would never land.
-# env restores the default before exec.
+# env restores the default before exec. setsid gives each job its own process
+# group (pgid == the job's pid) so stop() can signal ros2 run's wrapper and the
+# real binary under it together.
 # shellcheck disable=SC2086  # *_LAUNCH_ARGS are space-separated name:=value lists
-env --default-signal=INT ros2 launch thornbots_pkg auto.launch.py \
+setsid env --default-signal=INT ros2 launch thornbots_pkg auto.launch.py \
     lidar_serial_port:="${LIDAR_SERIAL_DEVICE:-/host-dev/rplidar}" \
     localization_mode:="${LOCALIZATION_MODE:-mapping}" \
     center_weight:="${CENTER_WEIGHT:-1.0}" \
@@ -60,7 +62,7 @@ env --default-signal=INT ros2 launch thornbots_pkg auto.launch.py \
 auto_pid=$!
 
 # shellcheck disable=SC2086
-env --default-signal=INT ros2 launch realsense_yolov8_nitros_bridge isaac_ros_yolov8_realsense.launch.py \
+setsid env --default-signal=INT ros2 launch realsense_yolov8_nitros_bridge isaac_ros_yolov8_realsense.launch.py \
     "${model_args[@]}" \
     num_classes:="${NUM_CLASSES:-8}" \
     confidence_threshold:="${CONFIDENCE_THRESHOLD:-0.25}" \
@@ -76,7 +78,7 @@ boot "launches started (auto $auto_pid, yolo $yolo_pid)"
 # The RealSense node publishes raw only (55 MB/s at 640x480x60).
 video_pid=
 if [[ "${ENABLE_BAG:-true}" == true && "${ENABLE_VIDEO:-true}" == true ]]; then
-    env --default-signal=INT ros2 run image_transport republish --ros-args \
+    setsid env --default-signal=INT ros2 run image_transport republish --ros-args \
         -r __node:=video_republisher \
         -p in_transport:=raw -p out_transport:=compressed \
         -p out.compressed.jpeg_quality:="${VIDEO_JPEG_QUALITY:-80}" \
@@ -89,7 +91,7 @@ fi
 foxglove_pid=
 if [[ "${ENABLE_FOXGLOVE:-false}" == true ]]; then
     if ros2 pkg prefix foxglove_bridge >/dev/null 2>&1; then
-        env --default-signal=INT ros2 run foxglove_bridge foxglove_bridge --ros-args \
+        setsid env --default-signal=INT ros2 run foxglove_bridge foxglove_bridge --ros-args \
             -p port:="${FOXGLOVE_PORT:-8765}" -p address:=0.0.0.0 \
             -p "capabilities:=[connectionGraph, assets]" &
         foxglove_pid=$!
@@ -116,7 +118,7 @@ bag_topics=(
 [[ -n "$video_pid" ]] && bag_topics+=(/color/image_raw/compressed /color/camera_info)
 bag_pid=
 if [[ "${ENABLE_BAG:-true}" == true ]]; then
-    env --default-signal=INT ros2 bag record -s mcap \
+    setsid env --default-signal=INT ros2 bag record -s mcap \
         --storage-config-file /opt/thornbots-startup/mcap-storage.yaml \
         --max-bag-duration 60 --max-cache-size 0 \
         -o "$RUN_DIR/bag" --topics "${bag_topics[@]}" &
@@ -125,9 +127,32 @@ if [[ "${ENABLE_BAG:-true}" == true ]]; then
 fi
 
 # docker stop sends SIGTERM here; ros2 launch and the recorder shut down
-# cleanly on SIGINT.
-stop() { kill -INT "$auto_pid" "$yolo_pid" $bag_pid $video_pid $foxglove_pid 2>/dev/null; wait; }
-trap 'stop; exit 0' TERM INT
+# cleanly on SIGINT. Each job's whole group gets SIGINT, then SIGKILL after
+# STOP_TIMEOUT_S: a node ignoring SIGINT must not keep the container alive,
+# or systemd never restarts it. Group signals go to the pgid, not the pid.
+STOP_TIMEOUT_S="${STOP_TIMEOUT_S:-8}"
+stop() {
+    local pids=() p i
+    for p in "$auto_pid" "$yolo_pid" "$bag_pid" "$video_pid" "$foxglove_pid"; do
+        [[ -n "$p" ]] && pids+=("$p")
+    done
+    for p in "${pids[@]}"; do kill -INT -- "-$p" 2>/dev/null; done
+    for (( i = 0; i < STOP_TIMEOUT_S * 10; i++ )); do
+        sleep 0.1
+        for p in "${pids[@]}"; do
+            kill -0 -- "-$p" 2>/dev/null && continue 2
+        done
+        break
+    done
+    for p in "${pids[@]}"; do
+        if kill -0 -- "-$p" 2>/dev/null; then
+            echo "[thornbots] group $p ignored SIGINT for ${STOP_TIMEOUT_S}s; SIGKILL" >&2
+            kill -KILL -- "-$p" 2>/dev/null
+        fi
+    done
+    wait
+}
+trap 'trap "" TERM INT; stop; exit 0' TERM INT
 wait -n "$auto_pid" "$yolo_pid"
 rc=$?
 echo "[thornbots] a launch exited ($rc); stopping the other"

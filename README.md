@@ -74,7 +74,9 @@ and fails fast with the real error instead.
 (`enable_serial_bridge:=False`), because `auto.launch.py` starts
 `dji_serial_bridge_node` on `/dev/ttyTHS1`. If either launch exits,
 `thornbots-launch.sh` stops the other and the container exits, so systemd
-restarts the whole stack.
+restarts the whole stack. Stopping signals every background job's process
+group (SIGINT, then SIGKILL after `STOP_TIMEOUT_S`, default 8 s), so a node
+that ignores SIGINT can't keep the container, and the restart, hanging.
 
 **Logs survive a bad clock.** The Jetsons boot on the RTC's time, and NTP
 can step it by a minute or more once Wi-Fi is up, after the stack has
@@ -97,9 +99,9 @@ the localization, lidar, referee and CV topics (`/cv/target` and
 into 60 s files, written without a cache in 256 KiB zstd chunks
 (`mcap-storage.yaml`), so a battery pull loses about a second. That bag has
 no `metadata.yaml`; `ros2 bag reindex <dir>/bag -s mcap` rebuilds it (Foxglove
-opens the `.mcap` files without it). The recorder is stopped with SIGTERM:
-as a background job of a non-interactive shell it starts with SIGINT
-ignored. It isn't watched: if it dies, the stack keeps running.
+opens the `.mcap` files without it). The recorder is stopped with SIGINT
+(`env --default-signal=INT` undoes the ignore a background job of a
+non-interactive shell starts with). It isn't watched: if it dies, the stack keeps running.
 `ENABLE_BAG=false` turns it off.
 
 **Pruning.** At each start, `thornbots-start.sh` deletes the oldest runs
