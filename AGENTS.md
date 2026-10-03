@@ -15,10 +15,14 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
   (2026-10-03) to dodge the `/pose` type clash (ROADMAP T26) until it's
   fixed, and `AUTO_LAUNCH_ARGS=use_rf2o:=false` (rf2o ran away to 265 m
   at boot while the robot stood still). Old files: `launch.env.bak-*`.
-- Clock fixes (ROADMAP T27) untested on a robot: restore of timesyncd's
-  saved time after `rtc0` hctosys, and a restart on any wall-clock step
-  over 1 s. Check on the next sentry boot with Wi-Fi: one `[clock] wall
-  clock stepped` line, one restart, no `negative time point` abort.
+- Clock fixes (ROADMAP T27): restore of timesyncd's saved time after
+  `rtc0` hctosys, and a restart on any wall-clock step over 1 s. Host
+  side passes on `ts-nano-dev` with `docker` stubbed (2026-10-03); not
+  yet run with a camera or a boot-time RTC reset. Check on the next
+  sentry boot with Wi-Fi: one `[clock] wall clock stepped` line, one
+  restart, no `negative time point` abort.
+- A manual `date -s` on a synced robot lasts under 1 s: timesyncd sees
+  the change and steps it back. Stop timesyncd to test the watcher.
 - Open: a ROS process started in the running container after the stack
   (`docker exec`) discovers few or none of its nodes (2026-10-03).
   Read the bag instead.
