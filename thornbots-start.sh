@@ -126,7 +126,7 @@ done
         -e LIDAR_SERIAL_DEVICE \
         -e LOCALIZATION_MODE -e ENABLE_SNAPSHOT \
         -e AUTO_LAUNCH_ARGS -e YOLO_LAUNCH_ARGS -e ENABLE_BAG \
-        -e ENABLE_VIDEO -e VIDEO_JPEG_QUALITY \
+        -e ENABLE_VIDEO -e VIDEO_JPEG_QUALITY -e ENABLE_FOXGLOVE -e FOXGLOVE_PORT \
         -e THORNBOTS_RUN_DIR="/data/thornbots-logs/${RUN_NAME}" \
         -v "${ISAAC_ROS_WS_HOST}:/workspaces/isaac_ros-dev" \
         -v "${LOG_DIR}:/data/thornbots-logs" \
