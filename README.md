@@ -98,10 +98,16 @@ crashing anything. Two steps happen at boot. The sentry's `rtc0`
 kernel's hctosys RTC it then sets the clock to 1970, undoing timesyncd's
 restore of its saved time. So `thornbots-start.sh` waits for that (up to
 20 s uptime) and restores the saved time itself before `docker run`. The
-second is NTP's first sync once Wi-Fi is up (~50 s), which no boot-time
-wait can cover air-gapped. A watcher compares wall time to `/proc/uptime`
-every second; on a step over 1 s it stops the container and exits 75, so
-systemd restarts the stack. Air-gapped there's no NTP and no restart.
+second is NTP's first sync once Wi-Fi is up, at boot or mid-match, by
+however stale the clock is. So the script stops `systemd-timesyncd` for
+the run, and the unit's `ExecStopPost` starts it again: the clock syncs
+between runs, never under one. A run started air-gapped keeps the
+restored time, off by however long the robot was off. The script saves
+the time every 60 s as timesyncd would (`touch` on its clock file), so
+the next boot restores it. A watcher compares wall time to
+`/proc/uptime` every second; on a step over 1 s anyway it stops the
+container and exits 75, so systemd restarts the stack. Run by hand, the
+script leaves timesyncd stopped: `sudo systemctl start systemd-timesyncd`.
 
 **Per-run bag.** `thornbots-launch.sh` records one MCAP bag per run:
 `/rosout` (every node's log, with severity, node and stamp as fields) and

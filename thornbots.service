@@ -16,6 +16,8 @@ Type=simple
 ExecStartPre=-/usr/bin/docker rm -f thornbots-runtime
 ExecStart=/usr/local/bin/thornbots-start.sh
 ExecStop=/usr/bin/docker stop --time 15 thornbots-runtime
+# thornbots-start.sh stops NTP for the run; sync again between runs.
+ExecStopPost=-/usr/bin/systemctl start --no-block systemd-timesyncd
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30

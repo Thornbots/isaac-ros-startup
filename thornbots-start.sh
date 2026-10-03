@@ -30,6 +30,9 @@ if (( $(date +%s) < saved )); then
     boot "clock $(date -u '+%F %T') UTC is behind timesyncd's saved time; restoring"
     date -s "@$saved" >/dev/null || echo "WARNING: date -s failed" >&2
 fi
+# No NTP step under a running stack: Wi-Fi mid-match would jump the clock by
+# however stale it is. thornbots.service's ExecStopPost starts it again.
+systemctl stop systemd-timesyncd || echo "WARNING: could not stop timesyncd" >&2
 
 # ── Workspace: first ~/workspaces/isaac_ros-dev, else ISAAC_ROS_WS in dotfiles
 if [[ -z "${ISAAC_ROS_WS_HOST:-}" ]]; then
@@ -116,15 +119,17 @@ done
             echo "WARNING: nvidia-ctk cdi generate failed"
         boot "CDI spec regenerated"
     fi
-    # A wall-clock step (NTP's first sync) breaks every node's stamps: the
-    # camera container aborts on negative times, amcl drops out. Stop the
-    # stack on one; the exit code below makes systemd restart it.
+    # A wall-clock step breaks every node's stamps: the camera container
+    # aborts on negative times, amcl drops out. With timesyncd stopped none
+    # should come; on one, stop the stack and the exit code below restarts it.
+    # Also saves the time every 60 s, as timesyncd would, for the next boot.
     step_flag=/run/thornbots-clock-step
     rm -f "$step_flag"
     offset() { awk -v w="$(date +%s.%N)" '{ printf "%.1f", w - $1 }' /proc/uptime; }
     (
-        base=$(offset)
+        base=$(offset); n=0
         while sleep 1; do
+            (( ++n % 60 )) || touch -c /var/lib/systemd/timesync/clock
             step=$(awk -v a="$(offset)" -v b="$base" 'BEGIN { d = a - b; if (d > 1 || d < -1) printf "%+.1f", d }')
             [[ -z "$step" ]] && continue
             echo "[clock] wall clock stepped ${step} s; restarting the stack"
