@@ -12,8 +12,9 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
 - Per-run MCAP bag and ROS node logs run on the sentry (2026-10-03),
   JPEG colour video included (~8.5 GB/h). Pruning is untested on a robot.
 - The sentry's `/etc/thornbots/launch.env` has `LOCALIZATION_MODE=none`
-  (2026-10-03) to dodge the `/pose` type clash (ROADMAP T26) until it's
-  fixed, and `AUTO_LAUNCH_ARGS=use_rf2o:=false` (rf2o ran away to 265 m
+  (2026-10-03) to dodge the `/pose` type clash (ROADMAP T26). Fixed on
+  `main` (the bridge's pose is `/dji_serial_bridge/pose`): set it back to
+  `mapping` once the sentry runs that image. Also `AUTO_LAUNCH_ARGS=use_rf2o:=false` (rf2o ran away to 265 m
   at boot while the robot stood still). Old files: `launch.env.bak-*`.
 - Clock (ROADMAP T27): saved time restored after `rtc0` hctosys,
   timesyncd stopped for each run (synced between runs), a restart on any

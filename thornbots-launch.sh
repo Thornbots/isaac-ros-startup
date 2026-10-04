@@ -109,7 +109,7 @@ bag_topics=(
     /rosout /diagnostics /tf /tf_static /map
     /scan /scan_odom /scan_odom/quality /odom /pose /amcl_pose
     /localization/odom /localization/map_odom
-    /dji_serial_bridge/ref_sys /dji_serial_bridge/relocalize
+    /dji_serial_bridge/pose /dji_serial_bridge/ref_sys /dji_serial_bridge/relocalize
     /dji_serial_bridge/cv_target
     /detections_output /cv/panel_detections /cv/panel_detection
     /cv/robot_panels /cv/panel_polygon /cv/target_state /cv/target
