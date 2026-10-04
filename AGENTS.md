@@ -5,10 +5,16 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
 
 ## Current state
 
-- Running on `ts-nano-sentry` since 2026-10-01: kernel start to both
-  launches up in 17.6 s, engine loaded about 4 s later. Not yet run on
-  hero or standard. Goal: power-on to a running stack under 1 min
-  (ROADMAP track C).
+- Running on `ts-nano-sentry` since 2026-10-01. Not yet run on hero or
+  standard. Goal: power-on to a running stack under 1 min (ROADMAP track
+  C). Medians from kernel start, 2026-10-04: `quiet`, 12 boots, docker run
+  11.0 s, camera up 19.6 s; without it, 10 boots, 16.1 s and 25.1 s.
+  Firmware time before the kernel is unmeasured.
+- GPU firmware failed to load (`Bootstrap HS ACR failed`) on 1 of 12
+  `quiet` boots, 0 of 10 without: not conclusive. `thornbots-start.sh`
+  reboots up to 2 times in a row on it. Untested on a real failure. The
+  journal is volatile, so a failed boot's dmesg is lost after the reboot.
+- Disabling `nv-tee-supplicant` breaks the GPU (same ACR failure).
 - Per-run MCAP bag and ROS node logs run on the sentry (2026-10-03),
   JPEG colour video included (~8.5 GB/h). Pruning is untested on a robot.
 - The sentry runs `LOCALIZATION_MODE=mapping`, `USE_WS_OVERLAY=false`,

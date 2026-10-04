@@ -113,7 +113,23 @@ done
     # container, err=100 (sentry, 2026-10-01 and 2026-10-04 with `quiet`).
     # So wait for nvgpu's last nodes and regenerate it every start (0.2 s).
     until [[ -e /dev/nvgpu/igpu0/tsg && -e /dev/nvidia0 ]] ||
-          (( $(cut -d. -f1 /proc/uptime) >= 30 )); do sleep 0.1; done
+          (( $(cut -d. -f1 /proc/uptime) >= 30 )); do
+        dmesg | grep -q 'Bootstrap HS ACR failed' && break
+        sleep 0.1
+    done
+    # Some boots the GPU's firmware fails to load (ACR bootstrap failed, ~1 in
+    # 12 on the sentry, 2026-10-04) and only a reboot brings CUDA back. Reboot,
+    # at most 2 times in a row (counted in /var/lib/thornbots/gpu-reboots).
+    gpu_reboots=/var/lib/thornbots/gpu-reboots
+    if [[ -e /dev/nvgpu/igpu0/tsg ]]; then
+        rm -f "$gpu_reboots"
+    elif (( $(cat "$gpu_reboots" 2>/dev/null || echo 0) < 2 )); then
+        echo $(( $(cat "$gpu_reboots" 2>/dev/null || echo 0) + 1 )) > "$gpu_reboots"
+        boot "GPU failed to start ($(dmesg | grep -m1 -o 'Bootstrap HS ACR failed' || echo 'no nodes')); rebooting"
+        sync; systemctl reboot; exit 1
+    else
+        echo "ERROR: GPU failed to start after 2 reboots; not rebooting again" >&2
+    fi
     nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml >/dev/null 2>&1 ||
         echo "WARNING: nvidia-ctk cdi generate failed"
     boot "CDI spec generated"

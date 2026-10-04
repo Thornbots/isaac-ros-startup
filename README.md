@@ -60,6 +60,10 @@ The first start after boot skips the RealSense USB reset (about 5 s,
 `camera_initial_reset:=False`); a restart in the same boot does the reset,
 in case the camera is what failed. `/run/thornbots-started` marks it.
 
+If the GPU's firmware fails to load at boot (`Bootstrap HS ACR failed` in
+`dmesg`), CUDA stays dead until a reboot, so `thornbots-start.sh` reboots,
+at most twice in a row (`/var/lib/thornbots/gpu-reboots`).
+
 ## Design notes
 
 **No `network-online.target`.** The robot runs air-gapped in a match, and
