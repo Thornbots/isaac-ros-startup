@@ -108,17 +108,15 @@ done
     if (( ${#pruned[@]} )); then
         echo "Pruned  : ${pruned[*]} (under ${LOG_MIN_FREE_GB:-20} GB free)"
     fi
-    # nvidia-cdi-refresh can run before udev gives the GPU nodes group video,
-    # and that spec makes them root-only in the container: CUDA err=100 for
-    # admin (sentry, 2026-10-01). Regenerate it if it disagrees with /dev.
-    cdi=/var/run/cdi/nvidia.yaml
-    if [[ -f "$cdi" ]] && ! grep -A5 'path: /dev/nvhost-gpu$' "$cdi" |
-            grep -q "gid: $(stat -c %g /dev/nvhost-gpu)$"; then
-        echo "CDI spec stale (GPU node group differs); regenerating $cdi"
-        nvidia-ctk cdi generate --output="$cdi" >/dev/null 2>&1 ||
-            echo "WARNING: nvidia-ctk cdi generate failed"
-        boot "CDI spec regenerated"
-    fi
+    # nvidia-cdi-refresh runs at boot before the GPU nodes are all there, or
+    # before udev gives them group video. Either spec breaks CUDA in the
+    # container, err=100 (sentry, 2026-10-01 and 2026-10-04 with `quiet`).
+    # So wait for nvgpu's last nodes and regenerate it every start (0.2 s).
+    until [[ -e /dev/nvgpu/igpu0/tsg && -e /dev/nvidia0 ]] ||
+          (( $(cut -d. -f1 /proc/uptime) >= 30 )); do sleep 0.1; done
+    nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml >/dev/null 2>&1 ||
+        echo "WARNING: nvidia-ctk cdi generate failed"
+    boot "CDI spec generated"
     # A wall-clock step breaks every node's stamps: the camera container
     # aborts on negative times, amcl drops out. With timesyncd stopped none
     # should come; on one, stop the stack and the exit code below restarts it.

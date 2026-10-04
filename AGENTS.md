@@ -25,9 +25,10 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
 - Open: a ROS process started in the running container after the stack
   (`docker exec`) discovers few or none of its nodes (2026-10-03).
   Read the bag instead.
-- `thornbots-start.sh` regenerates `/var/run/cdi/nvidia.yaml` when its
-  `/dev/nvhost-gpu` gid differs from the node's (CUDA err=100 for admin on
-  the sentry, 2026-10-01). Untested: not yet run on a robot.
+- `thornbots-start.sh` waits for the GPU nodes and regenerates
+  `/var/run/cdi/nvidia.yaml` every start: `nvidia-cdi-refresh` writes it
+  too early at boot (wrong gid 2026-10-01; missing nodes, CUDA err=100,
+  once `quiet` sped the kernel up 2026-10-04).
 - Needs `RemoveIPC=no` (install.sh, README.md "RemoveIPC"). Without it an
   ssh logout breaks Fast DDS shared memory and the localization lifecycle.
 - The first start after a new ONNX builds the TensorRT engine (141 s on
