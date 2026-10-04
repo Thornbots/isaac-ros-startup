@@ -11,17 +11,14 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
   (ROADMAP track C).
 - Per-run MCAP bag and ROS node logs run on the sentry (2026-10-03),
   JPEG colour video included (~8.5 GB/h). Pruning is untested on a robot.
-- The sentry's `/etc/thornbots/launch.env` has `LOCALIZATION_MODE=none`
-  (2026-10-03) to dodge the `/pose` type clash (ROADMAP T26). Fixed on
-  `main` (the bridge's pose is `/dji_serial_bridge/pose`): set it back to
-  `mapping` once the sentry runs that image. Also `AUTO_LAUNCH_ARGS=use_rf2o:=false`
-  from one runaway at boot; drop it with that change, rf2o on is the
-  default and best in sim (the user, 2026-10-03). Old files: `launch.env.bak-*`.
+- The sentry runs `LOCALIZATION_MODE=mapping`, `USE_WS_OVERLAY=false`,
+  `use_rf2o:=true` on image `8880173c` (2026-10-04). Old files:
+  `launch.env.bak-*`.
 - Clock (ROADMAP T27): saved time restored after `rtc0` hctosys,
   timesyncd stopped for each run (synced between runs), a restart on any
   step over 1 s anyway. Host side passes on `ts-nano-dev` with `docker`
-  stubbed (2026-10-03); not yet run with a camera or a boot-time RTC
-  reset. On the sentry: no `[clock]` line and no restart when Wi-Fi
+  stubbed (2026-10-03). On the sentry, the RTC reset is caught and the
+  saved time restored at 14.25 s (run00050, 2026-10-04). Left: no `[clock]` line and no restart when Wi-Fi
   comes up mid-run, `systemctl is-active systemd-timesyncd` inactive.
 - A manual `date -s` on a synced robot lasts under 1 s: timesyncd sees
   the change and steps it back. Stop timesyncd to test the watcher.
