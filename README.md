@@ -56,6 +56,10 @@ journalctl -b -u thornbots | grep '\[boot\]'
 `yolo11s_fp16.plan` builds the TensorRT engine from the ONNX, which takes
 minutes; later starts load the saved engine.
 
+The first start after boot skips the RealSense USB reset (about 5 s,
+`camera_initial_reset:=False`); a restart in the same boot does the reset,
+in case the camera is what failed. `/run/thornbots-started` marks it.
+
 ## Design notes
 
 **No `network-online.target`.** The robot runs air-gapped in a match, and

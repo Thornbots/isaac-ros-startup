@@ -137,7 +137,11 @@ done
         done
     ) &
     watch_pid=$!
-    boot "docker run"
+    # The RealSense USB reset costs ~5 s. A camera fresh from boot doesn't
+    # need it; a restart in the same boot may follow a wedged camera.
+    CAMERA_INITIAL_RESET=True
+    [[ -e /run/thornbots-started ]] || { CAMERA_INITIAL_RESET=False; touch /run/thornbots-started; }
+    boot "docker run (camera reset ${CAMERA_INITIAL_RESET})"
     set +e
     docker run --rm \
         --name thornbots-runtime \
@@ -159,6 +163,7 @@ done
         -e LOCALIZATION_MODE -e ENABLE_SNAPSHOT \
         -e AUTO_LAUNCH_ARGS -e YOLO_LAUNCH_ARGS -e ENABLE_BAG \
         -e ENABLE_VIDEO -e VIDEO_JPEG_QUALITY -e ENABLE_FOXGLOVE -e FOXGLOVE_PORT \
+        -e CAMERA_INITIAL_RESET="${CAMERA_INITIAL_RESET}" \
         -e THORNBOTS_RUN_DIR="/data/thornbots-logs/${RUN_NAME}" \
         -v "${ISAAC_ROS_WS_HOST}:/workspaces/isaac_ros-dev" \
         -v "${LOG_DIR}:/data/thornbots-logs" \

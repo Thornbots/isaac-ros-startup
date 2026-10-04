@@ -68,6 +68,7 @@ setsid env --default-signal=INT ros2 launch realsense_yolov8_nitros_bridge isaac
     confidence_threshold:="${CONFIDENCE_THRESHOLD:-0.25}" \
     nms_threshold:="${NMS_THRESHOLD:-0.45}" \
     enable_serial_bridge:=False \
+    camera_initial_reset:="${CAMERA_INITIAL_RESET:-True}" \
     enable_snapshot:="${ENABLE_SNAPSHOT:-False}" \
     snapshot_output_dir:=/data/realsense-captures \
     ${YOLO_LAUNCH_ARGS:-} &
