@@ -56,3 +56,10 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
 - Keep the `docker run` flags in `thornbots-start.sh` in step with
   isaac-ros-cli's `run_dev.py` for aarch64.
 - Commit here and push, then bump the gitlink in `../`.
+
+## CI
+
+GitHub CI runs on pushes and PRs outside frozen Humble branches. Shared lint
+is pinned to workspace `13d5965558a3`. Existing diagnostics are recorded in
+`.github/quality-baseline.json`; new diagnostics fail. Do not expand the
+baseline to hide regressions. Syntax errors always fail.
