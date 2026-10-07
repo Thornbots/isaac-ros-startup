@@ -3,15 +3,21 @@
 Boot service for the robot stack, a submodule of `thornbots_workspace` on
 `main` (Jazzy). `humble` is the frozen Humble version.
 
-## Current state
+## Deployment and validation
+
+Current machine state and robot acceptance checks live in
+[Hardware status](../JAZZY_PLAN.md#hardware-status). The dated observations
+below are historical; a service starting does not validate the robot stack.
+
+## Service observations and open checks
 
 - Running on `ts-nano-sentry` since 2026-10-01: kernel start to both
-  launches up in 17.6 s, engine loaded about 4 s later. Not yet run on
-  hero or standard. Goal: power-on to a running stack under 1 min
+  launches up in 17.6 s, engine loaded about 4 s later. Goal:
+  power-on to a running stack under 1 min
   (ROADMAP track C).
 - Per-run MCAP bag and ROS node logs run on the sentry (2026-10-03),
   JPEG colour video included (~8.5 GB/h). Pruning is untested on a robot.
-- The sentry runs `LOCALIZATION_MODE=mapping`, `USE_WS_OVERLAY=false`,
+- Sentry run00051 used `LOCALIZATION_MODE=mapping`, `USE_WS_OVERLAY=false`,
   `use_rf2o:=true` on image `8880173c` (2026-10-04). Old files:
   `launch.env.bak-*`.
 - Clock (ROADMAP T27): saved time restored after `rtc0` hctosys,
