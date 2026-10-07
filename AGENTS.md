@@ -6,7 +6,7 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
 ## Deployment and validation
 
 Current machine state and robot acceptance checks live in
-[Hardware status](../JAZZY_PLAN.md#hardware-status). The dated observations
+[Hardware status](../JAZZY_FLASH.md#hardware-status). The dated observations
 below are historical; a service starting does not validate the robot stack.
 
 ## Service observations and open checks
