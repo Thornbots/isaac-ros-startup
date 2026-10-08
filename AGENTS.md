@@ -3,10 +3,15 @@
 Boot service for the robot stack, a submodule of `thornbots_workspace` on
 `main` (Jazzy). `humble` is the frozen Humble version.
 
-## Current state
+## Deployment and validation
 
-- Running on `ts-nano-sentry` since 2026-10-01. Not yet run on hero or
-  standard. Goal: power-on to a running stack under 1 min (ROADMAP track
+Current machine state and robot acceptance checks live in
+[Hardware status](../JAZZY_FLASH.md#hardware-status). The dated observations
+below are historical; a service starting does not validate the robot stack.
+
+## Service observations and open checks
+
+- Running on `ts-nano-sentry` since 2026-10-01. Goal: power-on to a running stack under 1 min (ROADMAP track
   C). Medians from kernel start, 2026-10-04: `quiet`, 12 boots, docker run
   11.0 s, camera up 19.6 s; without it, 10 boots, 16.1 s and 25.1 s.
   Firmware time before the kernel is unmeasured.
@@ -17,7 +22,7 @@ Boot service for the robot stack, a submodule of `thornbots_workspace` on
 - Disabling `nv-tee-supplicant` breaks the GPU (same ACR failure).
 - Per-run MCAP bag and ROS node logs run on the sentry (2026-10-03),
   JPEG colour video included (~8.5 GB/h). Pruning is untested on a robot.
-- The sentry runs `LOCALIZATION_MODE=mapping`, `USE_WS_OVERLAY=false`,
+- Sentry run00051 used `LOCALIZATION_MODE=mapping`, `USE_WS_OVERLAY=false`,
   `use_rf2o:=true` on image `8880173c` (2026-10-04). Old files:
   `launch.env.bak-*`.
 - Clock (ROADMAP T27): saved time restored after `rtc0` hctosys,
