@@ -1,7 +1,7 @@
 # isaac-ros-startup
 
 Boot service for the robot stack, a submodule of `thornbots_workspace` on
-`main` (Jazzy). `humble` is the frozen Humble version.
+`nightly` (Jazzy integration); `main` is the promoted release. `humble` is the frozen Humble version.
 
 ## Deployment and validation
 
@@ -61,3 +61,10 @@ below are historical; a service starting does not validate the robot stack.
 - Keep the `docker run` flags in `thornbots-start.sh` in step with
   isaac-ros-cli's `run_dev.py` for aarch64.
 - Commit here and push, then bump the gitlink in `../`.
+
+## CI
+
+GitHub CI runs on PRs targeting main/nightly and pushes to both branches;
+manual runs are available. Shared lint is pinned to workspace `884bfe63ea4e` (tag `ci-tooling-884bfe6`). Existing diagnostics are recorded in
+`.github/quality-baseline.json`; new diagnostics fail. Do not expand the
+baseline to hide regressions. Syntax errors always fail.
