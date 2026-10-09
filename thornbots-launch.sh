@@ -10,7 +10,7 @@ boot() { echo "[boot] $(cut -d' ' -f1 /proc/uptime)s $*"; }
 boot "container up"
 
 n=0
-until out=$(python3 /opt/thornbots-startup/cuda-probe.py 2>&1); do
+until out=$(/opt/thornbots-startup/cuda-probe 2>&1); do
     n=$((n + 1))
     if (( n > 10 )); then
         echo "[thornbots] ERROR: CUDA not usable ($out)." >&2
@@ -26,7 +26,7 @@ boot "CUDA ready ($out)"
 export FASTRTPS_DEFAULT_PROFILES_FILE=/etc/fastdds/profile.xml
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 # Readable node-side times and no ANSI colour in the logs. These times step
-# with the clock; log-stamp.py's uptime prefix doesn't.
+# with the clock; log-stamp's uptime prefix doesn't.
 export RCUTILS_CONSOLE_OUTPUT_FORMAT='[{severity}] [{date_time_with_ms}] [{name}]: {message}'
 export RCUTILS_COLORIZED_OUTPUT=0
 # Node log files and launch.log beside the run's text log, not in the

@@ -55,6 +55,10 @@ below are historical; a service starting does not validate the robot stack.
 
 ## Rules
 
+- Host helpers are C++17 (`src/`), built by `install.sh` through
+  `build-helpers.sh`; validation commands are in [README](README.md#install).
+  Keep CUDA loading dynamic so robot installation needs no CUDA SDK.
+
 - Testing the service starts a container. Agents start or stop its
   container on a robot when the user asks, with no separate confirmation
   (`../CLAUDE.md` § Containers, the user, 2026-10-04).

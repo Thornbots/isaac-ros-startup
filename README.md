@@ -17,11 +17,22 @@ sudo systemctl start thornbots
 journalctl -u thornbots -f
 ```
 
-`install.sh` copies the scripts to `/usr/local/lib/thornbots` and
+`install.sh` builds the C++17 helpers with the host's `c++` compiler, then
+copies the scripts and binaries to `/usr/local/lib/thornbots` and
 `/usr/local/bin`, enables the unit, and writes `/etc/thornbots/launch.env`
 from `launch.env` with the workspace, UID and GID filled in. It keeps an
 existing `launch.env`; `--reset-config` rewrites it. Re-run it after
 pulling changes here.
+
+The helpers require only the standard C++ library and POSIX APIs; `cuda-probe`
+loads CUDA at runtime, so neither CUDA headers nor a CUDA development library
+is needed on the host. Build and test without starting the service:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel 2
+ctest --test-dir build --output-on-failure
+```
 
 ## Use
 
@@ -76,7 +87,7 @@ start. The lidar (CP210x) can re-enumerate mid-run, so it is read through
 the host's live `/dev` mounted at `/host-dev`. Don't mount the host's
 `/dev` over `/dev`: that shadows the NVIDIA runtime's CDI GPU devices, the
 container user gets `cudaErrorNotSupported` (801) on its first CUDA call,
-and NITROS segfaults. `cuda-probe.py` makes the same CUDA calls NITROS makes
+and NITROS segfaults. `cuda-probe` makes the same CUDA calls NITROS makes
 and fails fast with the real error instead.
 
 **Two launches, one container.** The YOLO launch's own serial bridge is off
@@ -90,7 +101,7 @@ that ignores SIGINT can't keep the container, and the restart, hanging.
 **Logs survive a bad clock.** The Jetsons boot on the RTC's time, and NTP
 can step it by a minute or more once Wi-Fi is up, after the stack has
 started (sentry, 2026-10-01: back once, forward ~80 s the next boot). So
-`log-stamp.py` prefixes every line with seconds since boot
+`log-stamp` prefixes every line with seconds since boot
 (`CLOCK_BOOTTIME`, never stepped) and the wall time, marked `?` until NTP
 syncs, and writes a `[clock]` line at the sync and any later step. ROS's own
 per-line time (`{date_time_with_ms}`) steps with the clock. Files are named

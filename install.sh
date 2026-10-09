@@ -29,7 +29,10 @@ HOME_DIR=$(getent passwd "$OWNER" | cut -d: -f6)
 echo "workspace $WS, owner $OWNER ($(stat -c %u:%g "$WS"))"
 
 install -d /etc/thornbots /usr/local/lib/thornbots
-install -m 755 "$SRC/thornbots-launch.sh" "$SRC/cuda-probe.py" "$SRC/log-stamp.py" /usr/local/lib/thornbots/
+HELPERS=$(mktemp -d)
+trap 'rm -rf "$HELPERS"' EXIT
+bash "$SRC/build-helpers.sh" "$HELPERS"
+install -m 755 "$SRC/thornbots-launch.sh" "$HELPERS/cuda-probe" "$HELPERS/log-stamp" /usr/local/lib/thornbots/
 install -m 644 "$SRC/mcap-storage.yaml" /usr/local/lib/thornbots/
 install -m 755 "$SRC/thornbots-start.sh" /usr/local/bin/thornbots-start.sh
 install -m 644 "$SRC/thornbots.service" /etc/systemd/system/thornbots.service

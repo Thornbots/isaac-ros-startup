@@ -203,5 +203,5 @@ done
     [[ -e "$step_flag" ]] && rc=75  # EX_TEMPFAIL: Restart=on-failure fires
     boot "container exited with code ${rc}"
     exit "$rc"
-} 2>&1 | python3 "${LIB_DIR}/log-stamp.py" "$LOG_FILE"
+} 2>&1 | "${LIB_DIR}/log-stamp" "$LOG_FILE"
 exit "${PIPESTATUS[0]}"
