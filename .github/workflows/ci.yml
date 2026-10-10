@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   quality:
-    uses: Thornbots/thornbots_workspace/.github/workflows/quality.yml@884bfe63ea4e76af921276a978672fb04e6c3205
+    uses: Thornbots/thornbots_workspace/.github/workflows/quality.yml@aec2d6037a84052ed687a6c766cf882c88352bd0
     with:
-      tooling-ref: 884bfe63ea4e76af921276a978672fb04e6c3205
+      tooling-ref: aec2d6037a84052ed687a6c766cf882c88352bd0
       unit-suite: startup
