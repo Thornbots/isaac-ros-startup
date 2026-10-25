@@ -2,7 +2,7 @@
 
 Follow [workspace rules](../AGENTS.md) and [CI](../docs/CI.md).
 Read [installation](README.md#install) and [design](README.md#design-notes)
-before changing the boot service. Acceptance: [hardware status](../docs/JAZZY_FLASH.md#hardware-status).
+before changing the boot service. Acceptance: [ROADMAP](../docs/ROADMAP.md#later-needs-a-robot).
 
 ## Rules
 
