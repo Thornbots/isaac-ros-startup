@@ -54,6 +54,11 @@ The image bakes our packages into `/workspaces/ros2_ws`, and that is what
 the service runs. To run a `colcon build` from the workspace instead, set
 `USE_WS_OVERLAY=true`.
 
+The service boots with `LOCALIZATION_MODE=mapping`; `AUTO_LAUNCH_ARGS` adds
+space-separated `name:=value` arguments to `auto.launch.py`. See the
+[launch.env comments](launch.env) and the
+[field-day and room workflow](../sentry_localization/README.md#field-day-and-room-workflow).
+
 ## Boot time
 
 Each stage prints a `[boot] <uptime>s` line to the journal:
