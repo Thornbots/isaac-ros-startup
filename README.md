@@ -57,7 +57,7 @@ the service runs. To run a `colcon build` from the workspace instead, set
 The service boots with `LOCALIZATION_MODE=mapping`; `AUTO_LAUNCH_ARGS` adds
 space-separated `name:=value` arguments to `auto.launch.py`. See the
 [launch.env comments](launch.env) and the
-[field-day and room workflow](../sentry_localization/README.md#field-day-and-room-workflow).
+[field-day and room workflow](../thornbots_pkg/README.md#field-day-and-room-workflow).
 
 ## Boot time
 
