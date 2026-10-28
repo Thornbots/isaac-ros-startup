@@ -170,7 +170,7 @@ done
         -e HOST_USER_GID="${HOST_USER_GID}" \
         -e ISAAC_ROS_WS=/workspaces/isaac_ros-dev \
         -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-1}" \
-        -e USE_WS_OVERLAY="${USE_WS_OVERLAY:-false}" \
+        -e USE_WS_OVERLAY="${USE_WS_OVERLAY:-true}" \
         -e ENGINE_PATH="/workspaces/isaac_ros-dev/${ENGINE_REL_PATH}" \
         -e ONNX_PATH="/workspaces/isaac_ros-dev/${ONNX_REL_PATH}" \
         -e CONFIDENCE_THRESHOLD -e NMS_THRESHOLD -e NUM_CLASSES \

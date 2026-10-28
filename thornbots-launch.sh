@@ -37,7 +37,7 @@ export ROS_LOG_DIR="$RUN_DIR/ros"
 set +u
 source /opt/ros/jazzy/setup.bash
 source /workspaces/ros2_ws/install/setup.bash
-if [[ "${USE_WS_OVERLAY:-false}" == true && -f "$ISAAC_ROS_WS/install/setup.bash" ]]; then
+if [[ "${USE_WS_OVERLAY:-true}" == true && -f "$ISAAC_ROS_WS/install/setup.bash" ]]; then
     source "$ISAAC_ROS_WS/install/setup.bash"
 fi
 set -u
