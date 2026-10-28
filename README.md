@@ -50,9 +50,10 @@ ctest --test-dir build --output-on-failure
 Stop the service before `isaac-ros activate`: both want the camera, the
 lidar and `/dev/ttyTHS1`.
 
-The image bakes our packages into `/workspaces/ros2_ws`, and that is what
-the service runs. To run a `colcon build` from the workspace instead, set
-`USE_WS_OVERLAY=true`.
+The image bakes our packages into `/workspaces/ros2_ws`. By default the
+service overlays the workspace's `install/` on top when it exists, so a
+`colcon build` there wins, including a stale one over a newer image. Set
+`USE_WS_OVERLAY=false` to run only the baked packages.
 
 The service boots with `LOCALIZATION_MODE=mapping`; `AUTO_LAUNCH_ARGS` adds
 space-separated `name:=value` arguments to `auto.launch.py`. See the
