@@ -58,6 +58,7 @@ setsid env --default-signal=INT ros2 launch thornbots_pkg auto.launch.py \
     center_weight:="${CENTER_WEIGHT:-1.0}" \
     priority_class_bonus:="${PRIORITY_CLASS_BONUS:-0.5}" \
     priority_class_ids:="${PRIORITY_CLASS_IDS:-[2,6]}" \
+    v_muzzle:="${EXIT_VELOCITY:-22.0}" \
     ${AUTO_LAUNCH_ARGS:-} &
 auto_pid=$!
 
