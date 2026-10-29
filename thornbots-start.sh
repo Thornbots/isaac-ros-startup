@@ -62,6 +62,7 @@ if [[ -f /etc/thornbots/mmm-shutdown.enabled ]]; then
     [[ -d /run/thornbots-mmm && ! -L /run/thornbots-mmm ]] || {
         echo "ERROR: MMM request directory missing; check systemd-tmpfiles" >&2; exit 1; }
     mmm_mount=(--mount type=bind,src=/run/thornbots-mmm,dst=/run/thornbots-mmm)
+    export AUTO_LAUNCH_ARGS="${AUTO_LAUNCH_ARGS:-} mmm_shutdown_after_save:=true"
 fi
 
 # ── Image: newest isaac-ros-cli build of our chain, unless pinned

@@ -39,7 +39,9 @@ ctest --test-dir build --output-on-failure
 The default installation exposes no MMM request mount and enables no shutdown
 watcher. On the robot host, `sudo bash install.sh --enable-mmm-shutdown`
 installs and enables `thornbots-mmm-poweroff.path` and its oneshot service.
-Restart `thornbots` to add the mount. Reinstalling without the flag preserves
+Restart `thornbots` to add the mount and enable `mmm_shutdown_after_save:=true`
+through `AUTO_LAUNCH_ARGS`, after any arguments in `launch.env`.
+Reinstalling without the flag preserves
 an existing opt-in; `--reset-config` only resets launch settings.
 
 The installer adds a tmpfiles rule creating `/run/thornbots-mmm` as root,
