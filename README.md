@@ -34,6 +34,61 @@ cmake --build build --parallel 2
 ctest --test-dir build --output-on-failure
 ```
 
+## MMM shutdown (opt-in)
+
+The default installation exposes no MMM request mount and enables no shutdown
+watcher. On the robot host, `sudo bash install.sh --enable-mmm-shutdown`
+installs and enables `thornbots-mmm-poweroff.path` and its oneshot service.
+Restart `thornbots` to add the mount. Reinstalling without the flag preserves
+an existing opt-in; `--reset-config` only resets launch settings.
+
+The installer adds a tmpfiles rule creating `/run/thornbots-mmm` as root,
+mode `0730`, with the configured `HOST_USER_GID` (workspace group if blank).
+Only root and that group can traverse/write it; choose a group restricted to
+trusted robot processes. The startup script bind-mounts only this directory
+at the same container path when `/etc/thornbots/mmm-shutdown.enabled` exists.
+The standard aarch64 Isaac ROS CLI container flags remain unchanged; this
+mechanism adds no host socket, command channel or new container privileges.
+The existing privileged container is trusted, not a security boundary.
+
+**Request contract:** after successful map saving and durable completion of
+its required outputs, the in-container C++ mapping node writes exactly the
+24 bytes `MMM_READY_SAVE_COMPLETE\n` to a new regular file (one hard link,
+mode `0600`) under `/run/thornbots-mmm`, closes it, then atomically renames
+it to `/run/thornbots-mmm/poweroff.request`. Use a different temporary name
+in that directory; never write the final name incrementally. The node must
+make this request only when shutdown is intended. No request ID, arguments,
+paths or additional bytes are accepted. A missing mount means shutdown is
+disabled; the node must report that rather than create another directory.
+
+The host watcher invokes `mmm-poweroff`, which opens without following
+symlinks, rejects nonregular files, hard links and modes other than `0600`,
+unlinks the request,
+validates the exact contents, then executes `/usr/bin/systemctl poweroff`
+with no shell. It has no runtime path or executable overrides. Invalid files
+are consumed without shutdown (directories cannot be unlinked and must be
+removed manually); failures are logged in
+`journalctl -u thornbots-mmm-poweroff.service`. A failed shutdown is not retried:
+submit a new request after investigating. If repeated invalid requests (or a
+directory at the request path) hit systemd’s start limit, remove the invalid
+entry, run `sudo systemctl reset-failed thornbots-mmm-poweroff.service
+thornbots-mmm-poweroff.path`, then `sudo systemctl restart
+thornbots-mmm-poweroff.path`. `/run` is volatile, so no request
+survives a host reboot. Requests left during watcher downtime in the same
+boot are processed when it starts; remove them before re-enabling if unwanted.
+
+To disable, first stop `thornbots`, then run on the robot host:
+
+```bash
+sudo systemctl disable --now thornbots-mmm-poweroff.path
+sudo rm -f /etc/thornbots/mmm-shutdown.enabled /etc/tmpfiles.d/thornbots-mmm.conf
+sudo rm -f /run/thornbots-mmm/poweroff.request
+```
+
+The next `thornbots` start has no request mount. Installed inactive unit/helper
+files are harmless. Host tests exercise the consumer with temporary paths and
+a fake executable; they never install units or request real shutdown.
+
 ## Use
 
 | | |
