@@ -44,7 +44,7 @@ fi
     assert result.returncode == 0, result.stderr
     assert not log.exists()
     assert 'sudo nmcli --ask connection add type wifi' in result.stdout
-    assert '802-1x.ca-cert' in result.stdout and '802-1x.domain-suffix-match' in result.stdout
+    assert '802-1x.identity' in result.stdout and 'ClearPass' in result.stdout
     assert '802-1x.password-flags 0' in result.stdout and '802-1x.password ' not in result.stdout
     result = subprocess.run(['bash', str(source / 'eduroam.sh')],
                             env=dict(env, MODE='enumerate-fail'), capture_output=True, text=True)

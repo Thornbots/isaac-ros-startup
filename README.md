@@ -106,8 +106,9 @@ including `--reset-config`, preserves this opt-in. `eduroam.sh` reuses every
 NetworkManager Wi-Fi profile whose SSID is `eduroam`, enables autoconnect and
 sets its priority above other Wi-Fi profiles (at least 10). It makes those
 profiles system-wide. If none exists, it prints exact interactive `nmcli
---ask` commands to add and activate it: substitute your personal identity and campus IT's CA certificate
-and RADIUS domain. NetworkManager stores passwords in root-only system profiles;
+--ask` commands to add and activate it: substitute your personal identity.
+Register the robot's Wi-Fi MAC in ClearPass first; until then eduroam gives only
+a captive portal, which also cuts Tailscale. NetworkManager stores passwords in root-only system profiles;
 never put them in this repository or `launch.env`. Re-run the script after
 adding a profile. It does not connect or disconnect the current network.
 
