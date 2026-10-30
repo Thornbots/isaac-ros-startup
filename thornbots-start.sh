@@ -61,8 +61,16 @@ mmm_mount=()
 if [[ -f /etc/thornbots/mmm-shutdown.enabled ]]; then
     [[ -d /run/thornbots-mmm && ! -L /run/thornbots-mmm ]] || {
         echo "ERROR: MMM request directory missing; check systemd-tmpfiles" >&2; exit 1; }
-    mmm_mount=(--mount type=bind,src=/run/thornbots-mmm,dst=/run/thornbots-mmm)
+    mmm_mount=(--mount "type=bind,src=/run/thornbots-mmm,dst=/run/thornbots-mmm")
     export AUTO_LAUNCH_ARGS="${AUTO_LAUNCH_ARGS:-} mmm_shutdown_after_save:=true"
+fi
+
+wifi_mount=()
+if [[ -f /etc/thornbots/match-wifi-off.enabled ]]; then
+    [[ -d /run/thornbots-net && ! -L /run/thornbots-net ]] || {
+        echo "ERROR: Wi-Fi request directory missing; check systemd-tmpfiles" >&2; exit 1; }
+    wifi_mount=(--mount "type=bind,src=/run/thornbots-net,dst=/run/thornbots-net")
+    export AUTO_LAUNCH_ARGS="${AUTO_LAUNCH_ARGS:-} match_wifi_off:=true"
 fi
 
 # ── Image: newest isaac-ros-cli build of our chain, unless pinned
@@ -172,7 +180,7 @@ done
         --name thornbots-runtime \
         --privileged --network host --ipc=host --pid=host \
         --gpus all \
-        "${mmm_mount[@]}" \
+        "${mmm_mount[@]}" "${wifi_mount[@]}" \
         -e NVIDIA_VISIBLE_DEVICES=all \
         -e NVIDIA_DRIVER_CAPABILITIES=all \
         -e USERNAME=admin \

@@ -91,6 +91,73 @@ The next `thornbots` start has no request mount. Installed inactive unit/helper
 files are harmless. Host tests exercise the consumer with temporary paths and
 a fake executable; they never install units or request real shutdown.
 
+## Match Wi-Fi disconnect (opt-in)
+
+On the sentry host, after updating the image or building the workspace overlay:
+
+```bash
+sudo bash install.sh --enable-match-wifi-off --ws /home/blaise/workspaces/isaac_ros-dev
+sudo /usr/local/lib/thornbots/eduroam.sh
+sudo systemctl restart thornbots
+```
+
+Use the actual host workspace path for `--ws`. Reinstalling without the flag,
+including `--reset-config`, preserves this opt-in. `eduroam.sh` reuses every
+NetworkManager Wi-Fi profile whose SSID is `eduroam`, enables autoconnect and
+sets its priority above other Wi-Fi profiles (at least 10). It makes those
+profiles system-wide. If none exists, it prints exact interactive `nmcli
+--ask` commands to add and activate it: substitute your personal identity and campus IT's CA certificate
+and RADIUS domain. NetworkManager stores passwords in root-only system profiles;
+never put them in this repository or `launch.env`. Re-run the script after
+adding a profile. It does not connect or disconnect the current network.
+
+The installer creates `/run/thornbots-net` with mode `0730`, root ownership
+and configured `HOST_USER_GID` (workspace group if blank), and enables
+`thornbots-match-wifi-off.path`. The marker
+`/etc/thornbots/match-wifi-off.enabled` gates the startup bind mount and appends
+`match_wifi_off:=true` after the configured `AUTO_LAUNCH_ARGS`. Default installs
+and simulation do not enable it. The existing privileged container is trusted;
+choose a group restricted to trusted robot processes, as for MMM shutdown.
+
+The [guard node](../thornbots_pkg/README.md#match_wifi_guard) atomically publishes
+exactly `MATCH_BATTLE_WIFI_OFF\n` in `wifi-off.request`, a regular file with
+one hard link and mode `0600`. It uses a temporary name in the same directory,
+never creates the directory and reports write failures without retrying.
+The host helper shares MMM's strict validation: no symlinks, extra bytes,
+hard links or other modes. It consumes the request before acting, enumerates
+`nmcli -t -f DEVICE,TYPE device` and executes `/usr/bin/nmcli device disconnect`
+for **every** device of type `wifi`, including RHIT-OPEN connections. No shell,
+radio toggle or rfkill is used. Device disconnect suppresses NetworkManager
+autoconnect until reboot or an explicit manual connection; the stack never
+reconnects at match end. Normal operation restores Wi-Fi only on the next reboot.
+Foxglove and SSH over Wi-Fi disappear at battle, including the current session.
+
+The root oneshot uses MMM's filesystem sandbox and permits AF_UNIX for
+NetworkManager's system D-Bus socket at `/run/dbus/system_bus_socket`;
+`ProtectSystem=strict` does not prevent connecting to that socket. It does not
+use `PrivateNetwork` or hide `/run/dbus`. Logs are in
+`journalctl -u thornbots-match-wifi-off.service`. Failed disconnects are reported,
+and remaining devices are still attempted. Requests are not retried; fix the
+cause before submitting another. Requests left while the watcher was stopped
+are consumed when it starts. Remove stale requests before re-enabling if unwanted.
+Invalid directories at the request path need manual removal; after start-limit
+failures, remove the entry, reset both units with `systemctl reset-failed`, then
+restart the path unit. `/run` is volatile, so requests do not survive reboot.
+
+To disable, stop the stack first, then run on the host:
+
+```bash
+sudo systemctl stop thornbots
+sudo systemctl disable --now thornbots-match-wifi-off.path
+sudo rm -f /etc/thornbots/match-wifi-off.enabled /etc/tmpfiles.d/thornbots-net.conf
+sudo rm -f /run/thornbots-net/wifi-off.request
+sudo systemctl start thornbots
+```
+
+Disabling does not reconnect Wi-Fi during this boot. Reboot to restore normal
+autoconnect. Host tests use fake `nmcli` executables only; hardware acceptance
+remains on the [robot checklist](../docs/ROADMAP.md#later-needs-a-robot).
+
 ## Use
 
 | | |
@@ -138,6 +205,10 @@ If the GPU's firmware fails to load at boot (`Bootstrap HS ACR failed` in
 at most twice in a row (`/var/lib/thornbots/gpu-reboots`).
 
 ## Design notes
+
+**Match Wi-Fi and time.** `systemd-timesyncd` is already stopped for the run
+(see clock handling below), so losing or restoring Wi-Fi does not cause an NTP
+clock step under the stack.
 
 **No `network-online.target`.** The robot runs air-gapped in a match, and
 waiting for Wi-Fi costs boot time. Fast DDS picks its interfaces when a

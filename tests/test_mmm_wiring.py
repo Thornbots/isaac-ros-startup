@@ -21,14 +21,15 @@ with tempfile.TemporaryDirectory(prefix='mmm-wiring-') as tmp:
     fixture.mkdir()
     for name in ('install.sh', 'launch.env', 'thornbots-launch.sh', 'thornbots-start.sh',
                  'thornbots.service', 'mcap-storage.yaml', 'logind-thornbots.conf',
-                 'thornbots-mmm-poweroff.path', 'thornbots-mmm-poweroff.service'):
+                 'thornbots-mmm-poweroff.path', 'thornbots-mmm-poweroff.service', 'eduroam.sh',
+                 'thornbots-match-wifi-off.path', 'thornbots-match-wifi-off.service'):
         shutil.copy(source / name, fixture / name)
     installer = fixture / 'install.sh'
     script = installer.read_text().replace('/etc/', f'{root}/etc/').replace(
         '/usr/local/', f'{root}/usr/local/')
     installer.write_text(script)
     (fixture / 'build-helpers.sh').write_text(
-        '#!/bin/bash\ntouch "$1/cuda-probe" "$1/log-stamp" "$1/mmm-poweroff"\n')
+        '#!/bin/bash\ntouch "$1/cuda-probe" "$1/log-stamp" "$1/mmm-poweroff" "$1/match-wifi-off"\n')
     for name in ('etc/systemd/system', 'etc/tmpfiles.d', 'usr/local/bin', 'bin', 'workspace'):
         (root / name).mkdir(parents=True, exist_ok=True)
     log = root / 'commands'
@@ -75,9 +76,10 @@ with tempfile.TemporaryDirectory(prefix='mmm-wiring-') as tmp:
     assert '-e AUTO_LAUNCH_ARGS' in startup
     block = startup[startup.index('mmm_mount=()'):startup.index('# ── Image:')]
     block = block.replace('/etc/thornbots/', f'{root}/etc/thornbots/').replace(
-        '/run/thornbots-mmm', f'{root}/run/thornbots-mmm')
+        '/run/thornbots-mmm', f'{root}/run/thornbots-mmm').replace(
+        '/run/thornbots-net', f'{root}/run/thornbots-net')
     gate = root / 'gate.sh'
-    gate.write_text('set -eu\n' + block + '\nprintf "%s\\n" "${mmm_mount[@]}"\n'
+    gate.write_text('set -eu\n' + block + '\nprintf "%s\\n" "${mmm_mount[@]}" "${wifi_mount[@]}"\n'
                     'bash "$1"\n')
     launch = (source / 'thornbots-launch.sh').read_text()
     invocation = launch[launch.index('setsid env --default-signal=INT ros2 launch thornbots_pkg'):
@@ -106,6 +108,24 @@ with tempfile.TemporaryDirectory(prefix='mmm-wiring-') as tmp:
     assert 'arg=map_output_dir:=/tmp/maps' in output
     assert 'type=bind' not in output and 'mmm_shutdown_after_save:=' not in output
     marker.touch()
+    # Both opt-ins survive reinstall and append after operator arguments.
+    run(installer, '--ws', str(root / 'workspace'), '--enable-match-wifi-off', env=env)
+    wifi_marker = root / 'etc/thornbots/match-wifi-off.enabled'
+    assert wifi_marker.exists()
+    assert (root / 'etc/tmpfiles.d/thornbots-net.conf').read_text() == (
+        'd /run/thornbots-net 0730 root 12345 -\n')
+    assert 'enable --now thornbots-match-wifi-off.path' in log.read_text()
+    run(installer, '--ws', str(root / 'workspace'), '--reset-config', env=env)
+    assert marker.exists() and wifi_marker.exists()
+    wifi_dir = root / 'run/thornbots-net'
+    wifi_dir.mkdir(parents=True)
+    output = run(gate, str(launch_args), env=dict(env, AUTO_LAUNCH_ARGS='match_wifi_off:=false'))
+    assert 'dst=' + str(wifi_dir) in output
+    assert output.rfind('arg=match_wifi_off:=true') > output.find('arg=match_wifi_off:=false')
+    wifi_dir.rmdir()
+    result = subprocess.run(['bash', str(gate)], env=env, capture_output=True)
+    assert result.returncode != 0 and b'type=bind' not in result.stdout
+    wifi_marker.unlink()
     request_dir.rmdir()
     result = subprocess.run(['bash', str(gate)], env=env, capture_output=True)
     assert result.returncode != 0 and b'type=bind' not in result.stdout
