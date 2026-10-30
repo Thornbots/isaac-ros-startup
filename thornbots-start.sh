@@ -56,6 +56,15 @@ ISAAC_ROS_WS_HOST="${ISAAC_ROS_WS_HOST%/}"
 HOST_USER_UID="${HOST_USER_UID:-$(stat -c %u "$ISAAC_ROS_WS_HOST")}"
 HOST_USER_GID="${HOST_USER_GID:-$(stat -c %g "$ISAAC_ROS_WS_HOST")}"
 
+# Only the explicit installer opt-in exposes the fixed request directory.
+mmm_mount=()
+if [[ -f /etc/thornbots/mmm-shutdown.enabled ]]; then
+    [[ -d /run/thornbots-mmm && ! -L /run/thornbots-mmm ]] || {
+        echo "ERROR: MMM request directory missing; check systemd-tmpfiles" >&2; exit 1; }
+    mmm_mount=(--mount type=bind,src=/run/thornbots-mmm,dst=/run/thornbots-mmm)
+    export AUTO_LAUNCH_ARGS="${AUTO_LAUNCH_ARGS:-} mmm_shutdown_after_save:=true"
+fi
+
 # ── Image: newest isaac-ros-cli build of our chain, unless pinned
 if [[ -z "${THORNBOTS_IMAGE:-}" ]]; then
     THORNBOTS_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' nvcr.io/nvidia/isaac/ros |
@@ -163,6 +172,7 @@ done
         --name thornbots-runtime \
         --privileged --network host --ipc=host --pid=host \
         --gpus all \
+        "${mmm_mount[@]}" \
         -e NVIDIA_VISIBLE_DEVICES=all \
         -e NVIDIA_DRIVER_CAPABILITIES=all \
         -e USERNAME=admin \

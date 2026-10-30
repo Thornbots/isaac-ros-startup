@@ -6,10 +6,11 @@
 # unless --reset-config. Installs the scripts to /usr/local/lib/thornbots.
 set -euo pipefail
 
-WS="" RESET=0
+WS="" RESET=0 MMM_SHUTDOWN=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --ws) WS="$2"; shift 2 ;;
+        --enable-mmm-shutdown) MMM_SHUTDOWN=1; shift ;;
         --reset-config) RESET=1; shift ;;
         *) echo "unknown argument: $1" >&2; exit 1 ;;
     esac
@@ -32,7 +33,7 @@ install -d /etc/thornbots /usr/local/lib/thornbots
 HELPERS=$(mktemp -d)
 trap 'rm -rf "$HELPERS"' EXIT
 bash "$SRC/build-helpers.sh" "$HELPERS"
-install -m 755 "$SRC/thornbots-launch.sh" "$HELPERS/cuda-probe" "$HELPERS/log-stamp" /usr/local/lib/thornbots/
+install -m 755 "$SRC/thornbots-launch.sh" "$HELPERS/cuda-probe" "$HELPERS/log-stamp" "$HELPERS/mmm-poweroff" /usr/local/lib/thornbots/
 install -m 644 "$SRC/mcap-storage.yaml" /usr/local/lib/thornbots/
 install -m 755 "$SRC/thornbots-start.sh" /usr/local/bin/thornbots-start.sh
 install -m 644 "$SRC/thornbots.service" /etc/systemd/system/thornbots.service
@@ -54,6 +55,23 @@ else
 fi
 install -d -o "$OWNER" -g "$(stat -c %g "$WS")" "$HOME_DIR/logs"
 
+if [[ "$MMM_SHUTDOWN" == 1 ]]; then
+    # The root-owned directory grants only the configured container group access.
+    # Read the preserved config as startup does, so reinstall keeps UID/GID aligned.
+    # shellcheck source=/dev/null
+    source "$CFG"
+    mmm_ws="${ISAAC_ROS_WS_HOST:-$WS}"
+    mmm_gid="${HOST_USER_GID:-$(stat -c %g "$mmm_ws")}"
+    [[ "$mmm_gid" =~ ^[0-9]+$ ]] || { echo "invalid HOST_USER_GID" >&2; exit 1; }
+    install -m 644 "$SRC/thornbots-mmm-poweroff.path" "$SRC/thornbots-mmm-poweroff.service" /etc/systemd/system/
+    echo "d /run/thornbots-mmm 0730 root $mmm_gid -" > /etc/tmpfiles.d/thornbots-mmm.conf
+    chmod 644 /etc/tmpfiles.d/thornbots-mmm.conf
+    systemd-tmpfiles --create /etc/tmpfiles.d/thornbots-mmm.conf
+    install -m 644 /dev/null /etc/thornbots/mmm-shutdown.enabled
+fi
 systemctl daemon-reload
+if [[ "$MMM_SHUTDOWN" == 1 ]]; then
+    systemctl enable --now thornbots-mmm-poweroff.path
+fi
 systemctl enable thornbots.service
 echo "enabled. start now: sudo systemctl start thornbots; logs: journalctl -u thornbots -f"
