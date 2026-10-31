@@ -113,7 +113,7 @@ bag_topics=(
     /scan /scan_odom /scan_odom/quality /odom /pose /amcl_pose
     /localization/odom /localization/map_odom
     /dji_serial_bridge/pose /dji_serial_bridge/ref_sys /dji_serial_bridge/relocalize
-    /dji_serial_bridge/cv_target
+    /dji_serial_bridge/cv_target /dji_serial_bridge/mcb_data
     /detections_output /cv/panel_detections /cv/panel_detection
     /cv/robot_panels /cv/panel_polygon /cv/target_state /cv/target
     /cv/tracker/measurement
