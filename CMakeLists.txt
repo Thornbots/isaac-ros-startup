@@ -17,6 +17,9 @@ if(BUILD_TESTING)
   add_test(NAME mmm_wiring COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mmm_wiring.py ${CMAKE_CURRENT_SOURCE_DIR})
   set_tests_properties(mmm_wiring PROPERTIES TIMEOUT 30)
+  add_test(NAME camera_power_cycle COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_camera_power_cycle.py ${CMAKE_CURRENT_SOURCE_DIR})
+  set_tests_properties(camera_power_cycle PROPERTIES TIMEOUT 30)
   add_executable(test_match_wifi_off tests/test_match_wifi_off.cpp src/match_wifi_off.cpp)
   target_compile_definitions(test_match_wifi_off PRIVATE THORNBOTS_WIFI_NO_MAIN)
   add_test(NAME match_wifi_off COMMAND test_match_wifi_off)

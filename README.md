@@ -216,6 +216,16 @@ waiting for Wi-Fi costs boot time. Fast DDS picks its interfaces when a
 participant starts, so nodes started before Wi-Fi or tailscale are up
 aren't reachable from other machines until the service restarts.
 
+**Camera power cycle.** Hero's D435i, on the Orin Nano carrier's on-board
+Realtek hub, did not enumerate after cold or warm boots until replugged; udev
+rules, autosuspend and the RealSense reset were ruled out, since the host never
+saw the device (2026-10-30). Switching every hub port off for 5 s through
+sysfs (`.../<hub>-portN/disable`, the hub has per-port power switching)
+brought it back. `CAMERA_POWER_HUBS` names the hubs; a USB3 port loses power
+only with its USB2 companion, and the kernel doesn't pair these hubs' ports,
+so list both halves. It runs only when no RealSense is present, before the
+container starts. Other devices on those hubs drop for about 5 s.
+
 **Why /host-dev.** `--privileged` gives the container a copy of `/dev` at
 start. The lidar (CP210x) can re-enumerate mid-run, so it is read through
 the host's live `/dev` mounted at `/host-dev`. Don't mount the host's

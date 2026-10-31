@@ -21,6 +21,7 @@ with tempfile.TemporaryDirectory(prefix='mmm-wiring-') as tmp:
     fixture.mkdir()
     for name in ('install.sh', 'launch.env', 'thornbots-launch.sh', 'thornbots-start.sh',
                  'thornbots.service', 'mcap-storage.yaml', 'logind-thornbots.conf',
+                 'camera-power-cycle.sh',
                  'thornbots-mmm-poweroff.path', 'thornbots-mmm-poweroff.service', 'eduroam.sh',
                  'thornbots-match-wifi-off.path', 'thornbots-match-wifi-off.service'):
         shutil.copy(source / name, fixture / name)

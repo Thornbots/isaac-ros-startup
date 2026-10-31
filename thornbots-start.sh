@@ -180,6 +180,15 @@ done
         done
     ) &
     watch_pid=$!
+    # Some cameras never enumerate after power-up until their hub port loses
+    # power (hero's D435i, 2026-10-30). Opt-in per robot: CAMERA_POWER_HUBS.
+    if [[ -n "${CAMERA_POWER_HUBS:-}" ]] && ! grep -qx 8086 /sys/bus/usb/devices/*/idVendor 2>/dev/null; then
+        if "$LIB_DIR/camera-power-cycle.sh" $CAMERA_POWER_HUBS; then
+            boot "camera enumerated after power-cycling hubs ${CAMERA_POWER_HUBS}"
+        else
+            echo "WARNING: no RealSense after power-cycling hubs ${CAMERA_POWER_HUBS}"
+        fi
+    fi
     # The RealSense USB reset costs ~5 s. A camera fresh from boot doesn't
     # need it; a restart in the same boot may follow a wedged camera.
     CAMERA_INITIAL_RESET=True
