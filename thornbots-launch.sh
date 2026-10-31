@@ -88,16 +88,17 @@ if [[ "${ENABLE_BAG:-true}" == true && "${ENABLE_VIDEO:-true}" == true ]]; then
     video_pid=$!
 fi
 
-# Read-only Foxglove websocket on FOXGLOVE_PORT: viewers can't publish, call
-# services or set parameters. Started with the stack, so it sees every node.
+# Read-only Foxglove websocket on FOXGLOVE_ADDRESS:FOXGLOVE_PORT: viewers can't
+# publish, call services or set parameters. Started with the stack, so it sees
+# every node. Not watched: if the address is missing it exits, the robot runs.
 foxglove_pid=
 if [[ "${ENABLE_FOXGLOVE:-false}" == true ]]; then
     if ros2 pkg prefix foxglove_bridge >/dev/null 2>&1; then
         setsid env --default-signal=INT ros2 run foxglove_bridge foxglove_bridge --ros-args \
-            -p port:="${FOXGLOVE_PORT:-8765}" -p address:=0.0.0.0 \
+            -p port:="${FOXGLOVE_PORT:-8765}" -p address:="${FOXGLOVE_ADDRESS:-0.0.0.0}" \
             -p "capabilities:=[connectionGraph, assets]" &
         foxglove_pid=$!
-        boot "foxglove bridge on :${FOXGLOVE_PORT:-8765} (pid $foxglove_pid)"
+        boot "foxglove bridge on ${FOXGLOVE_ADDRESS:-0.0.0.0}:${FOXGLOVE_PORT:-8765} (pid $foxglove_pid)"
     else
         echo "[thornbots] ENABLE_FOXGLOVE=true but foxglove_bridge isn't in this image" >&2
     fi

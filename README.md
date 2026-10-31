@@ -167,7 +167,7 @@ remains on the [robot checklist](../docs/ROADMAP.md#later-needs-a-robot).
 | Logs, per run | `$LOG_DIR/thornbots-run<N>.log`, newest at `$LOG_DIR/latest.log` |
 | Bag and node logs, per run | `$LOG_DIR/thornbots-run<N>/bag/` (MCAP) and `ros/`, newest at `$LOG_DIR/latest/` |
 | Read the bag | `ros2 bag info <dir>/bag`, or open its `.mcap` files in Foxglove |
-| Watch live | `ENABLE_FOXGLOVE=true` in `launch.env`, then Foxglove → `ws://<robot IP>:8765` (read-only) |
+| Watch live | `ENABLE_FOXGLOVE=true` in `launch.env`, then Foxglove → `ws://<robot IP>:8765` (read-only); `FOXGLOVE_ADDRESS=192.168.55.1` limits it to the USB tether |
 | Restart after editing `launch.env` | `sudo systemctl restart thornbots` |
 | Shell in the running stack | `docker exec -it -u admin thornbots-runtime bash` |
 | Stop for development | `sudo systemctl stop thornbots` (and `disable` to keep it off across boots) |
