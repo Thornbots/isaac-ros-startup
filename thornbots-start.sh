@@ -56,6 +56,33 @@ ISAAC_ROS_WS_HOST="${ISAAC_ROS_WS_HOST%/}"
 HOST_USER_UID="${HOST_USER_UID:-$(stat -c %u "$ISAAC_ROS_WS_HOST")}"
 HOST_USER_GID="${HOST_USER_GID:-$(stat -c %g "$ISAAC_ROS_WS_HOST")}"
 
+# ── ROS domain: one per robot, so robots on one network never mix topics.
+if [[ -z "${ROS_DOMAIN_ID:-}" ]]; then
+    case "$(hostname)" in
+        *sentry*) ROS_DOMAIN_ID=7 ;;
+        *standard*) ROS_DOMAIN_ID=3 ;;
+        *) ROS_DOMAIN_ID=1 ;;
+    esac
+fi
+boot "ROS_DOMAIN_ID ${ROS_DOMAIN_ID}"
+
+# Only the explicit installer opt-in exposes the fixed request directory.
+mmm_mount=()
+if [[ -f /etc/thornbots/mmm-shutdown.enabled ]]; then
+    [[ -d /run/thornbots-mmm && ! -L /run/thornbots-mmm ]] || {
+        echo "ERROR: MMM request directory missing; check systemd-tmpfiles" >&2; exit 1; }
+    mmm_mount=(--mount "type=bind,src=/run/thornbots-mmm,dst=/run/thornbots-mmm")
+    export AUTO_LAUNCH_ARGS="${AUTO_LAUNCH_ARGS:-} mmm_shutdown_after_save:=true"
+fi
+
+wifi_mount=()
+if [[ -f /etc/thornbots/match-wifi-off.enabled ]]; then
+    [[ -d /run/thornbots-net && ! -L /run/thornbots-net ]] || {
+        echo "ERROR: Wi-Fi request directory missing; check systemd-tmpfiles" >&2; exit 1; }
+    wifi_mount=(--mount "type=bind,src=/run/thornbots-net,dst=/run/thornbots-net")
+    export AUTO_LAUNCH_ARGS="${AUTO_LAUNCH_ARGS:-} match_wifi_off:=true"
+fi
+
 # ── Image: newest isaac-ros-cli build of our chain, unless pinned
 if [[ -z "${THORNBOTS_IMAGE:-}" ]]; then
     THORNBOTS_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' nvcr.io/nvidia/isaac/ros |
@@ -163,22 +190,24 @@ done
         --name thornbots-runtime \
         --privileged --network host --ipc=host --pid=host \
         --gpus all \
+        "${mmm_mount[@]}" "${wifi_mount[@]}" \
         -e NVIDIA_VISIBLE_DEVICES=all \
         -e NVIDIA_DRIVER_CAPABILITIES=all \
         -e USERNAME=admin \
         -e HOST_USER_UID="${HOST_USER_UID}" \
         -e HOST_USER_GID="${HOST_USER_GID}" \
         -e ISAAC_ROS_WS=/workspaces/isaac_ros-dev \
-        -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-1}" \
+        -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" \
         -e USE_WS_OVERLAY="${USE_WS_OVERLAY:-false}" \
         -e ENGINE_PATH="/workspaces/isaac_ros-dev/${ENGINE_REL_PATH}" \
         -e ONNX_PATH="/workspaces/isaac_ros-dev/${ONNX_REL_PATH}" \
         -e CONFIDENCE_THRESHOLD -e NMS_THRESHOLD -e NUM_CLASSES \
-        -e CENTER_WEIGHT -e PRIORITY_CLASS_BONUS -e PRIORITY_CLASS_IDS \
+        -e CENTER_WEIGHT -e PRIORITY_CLASS_BONUS -e PRIORITY_CLASS_IDS -e EXIT_VELOCITY \
         -e LIDAR_SERIAL_DEVICE \
         -e LOCALIZATION_MODE -e ENABLE_SNAPSHOT \
         -e AUTO_LAUNCH_ARGS -e YOLO_LAUNCH_ARGS -e ENABLE_BAG \
-        -e ENABLE_VIDEO -e VIDEO_JPEG_QUALITY -e ENABLE_FOXGLOVE -e FOXGLOVE_PORT \
+        -e ENABLE_VIDEO -e VIDEO_JPEG_QUALITY \
+        -e ENABLE_FOXGLOVE -e FOXGLOVE_PORT -e FOXGLOVE_ADDRESS \
         -e CAMERA_INITIAL_RESET="${CAMERA_INITIAL_RESET}" \
         -e THORNBOTS_RUN_DIR="/data/thornbots-logs/${RUN_NAME}" \
         -v "${ISAAC_ROS_WS_HOST}:/workspaces/isaac_ros-dev" \

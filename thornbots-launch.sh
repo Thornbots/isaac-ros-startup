@@ -54,10 +54,11 @@ model_args=(engine_file_path:="$ENGINE_PATH")
 # shellcheck disable=SC2086  # *_LAUNCH_ARGS are space-separated name:=value lists
 setsid env --default-signal=INT ros2 launch thornbots_pkg auto.launch.py \
     lidar_serial_port:="${LIDAR_SERIAL_DEVICE:-/host-dev/rplidar}" \
-    localization_mode:="${LOCALIZATION_MODE:-mapping}" \
+    localization_mode:="${LOCALIZATION_MODE:-amcl}" \
     center_weight:="${CENTER_WEIGHT:-1.0}" \
     priority_class_bonus:="${PRIORITY_CLASS_BONUS:-0.5}" \
     priority_class_ids:="${PRIORITY_CLASS_IDS:-[2,6]}" \
+    v_muzzle:="${EXIT_VELOCITY:-22.0}" \
     ${AUTO_LAUNCH_ARGS:-} &
 auto_pid=$!
 
@@ -87,16 +88,17 @@ if [[ "${ENABLE_BAG:-true}" == true && "${ENABLE_VIDEO:-true}" == true ]]; then
     video_pid=$!
 fi
 
-# Read-only Foxglove websocket on FOXGLOVE_PORT: viewers can't publish, call
-# services or set parameters. Started with the stack, so it sees every node.
+# Read-only Foxglove websocket on FOXGLOVE_ADDRESS:FOXGLOVE_PORT: viewers can't
+# publish, call services or set parameters. Started with the stack, so it sees
+# every node. Not watched: if the address is missing it exits, the robot runs.
 foxglove_pid=
 if [[ "${ENABLE_FOXGLOVE:-false}" == true ]]; then
     if ros2 pkg prefix foxglove_bridge >/dev/null 2>&1; then
         setsid env --default-signal=INT ros2 run foxglove_bridge foxglove_bridge --ros-args \
-            -p port:="${FOXGLOVE_PORT:-8765}" -p address:=0.0.0.0 \
+            -p port:="${FOXGLOVE_PORT:-8765}" -p address:="${FOXGLOVE_ADDRESS:-0.0.0.0}" \
             -p "capabilities:=[connectionGraph, assets]" &
         foxglove_pid=$!
-        boot "foxglove bridge on :${FOXGLOVE_PORT:-8765} (pid $foxglove_pid)"
+        boot "foxglove bridge on ${FOXGLOVE_ADDRESS:-0.0.0.0}:${FOXGLOVE_PORT:-8765} (pid $foxglove_pid)"
     else
         echo "[thornbots] ENABLE_FOXGLOVE=true but foxglove_bridge isn't in this image" >&2
     fi
