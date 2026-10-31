@@ -56,6 +56,16 @@ ISAAC_ROS_WS_HOST="${ISAAC_ROS_WS_HOST%/}"
 HOST_USER_UID="${HOST_USER_UID:-$(stat -c %u "$ISAAC_ROS_WS_HOST")}"
 HOST_USER_GID="${HOST_USER_GID:-$(stat -c %g "$ISAAC_ROS_WS_HOST")}"
 
+# ── ROS domain: one per robot, so robots on one network never mix topics.
+if [[ -z "${ROS_DOMAIN_ID:-}" ]]; then
+    case "$(hostname)" in
+        *sentry*) ROS_DOMAIN_ID=7 ;;
+        *standard*) ROS_DOMAIN_ID=3 ;;
+        *) ROS_DOMAIN_ID=1 ;;
+    esac
+fi
+boot "ROS_DOMAIN_ID ${ROS_DOMAIN_ID}"
+
 # Only the explicit installer opt-in exposes the fixed request directory.
 mmm_mount=()
 if [[ -f /etc/thornbots/mmm-shutdown.enabled ]]; then
@@ -187,7 +197,7 @@ done
         -e HOST_USER_UID="${HOST_USER_UID}" \
         -e HOST_USER_GID="${HOST_USER_GID}" \
         -e ISAAC_ROS_WS=/workspaces/isaac_ros-dev \
-        -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-1}" \
+        -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" \
         -e USE_WS_OVERLAY="${USE_WS_OVERLAY:-false}" \
         -e ENGINE_PATH="/workspaces/isaac_ros-dev/${ENGINE_REL_PATH}" \
         -e ONNX_PATH="/workspaces/isaac_ros-dev/${ONNX_REL_PATH}" \
