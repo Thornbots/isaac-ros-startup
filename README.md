@@ -295,3 +295,10 @@ installs `logind-thornbots.conf` (`RemoveIPC=no`).
 **Environment.** The image exports `ROS_DOMAIN_ID`, the Fast DDS profile
 and `RMW_IMPLEMENTATION` from `/etc/bash.bashrc`, which a non-interactive
 shell never reads, so `thornbots-launch.sh` sets them itself.
+
+**Domain per robot.** Each robot's stack runs on its own `ROS_DOMAIN_ID`
+(sentry 7, standard 3, hero 1; `launch.env`), because the profile's
+tailscale peers let one robot's TF and `ref_sys` reach another on the same
+domain (sentry's flipped standard's team colour, 2026-10-26). A shell or
+laptop joining a robot needs `export ROS_DOMAIN_ID=<robot's>`: the image's
+`/etc/bash.bashrc` still sets 1.
