@@ -179,7 +179,7 @@ The image bakes our packages into `/workspaces/ros2_ws`, and that is what
 the service runs. To run a `colcon build` from the workspace instead, set
 `USE_WS_OVERLAY=true`.
 
-The service boots with `LOCALIZATION_MODE=mapping`; `AUTO_LAUNCH_ARGS` adds
+The service boots with `LOCALIZATION_MODE=amcl`; `AUTO_LAUNCH_ARGS` adds
 space-separated `name:=value` arguments to `auto.launch.py`. See the
 [launch.env comments](launch.env) and the
 [field-day and room workflow](../thornbots_pkg/README.md#field-day-and-room-workflow).
