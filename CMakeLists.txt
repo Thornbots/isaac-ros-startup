@@ -14,6 +14,9 @@ if(BUILD_TESTING)
   add_test(NAME workspace_setup COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_workspace_setup.py ${CMAKE_CURRENT_SOURCE_DIR})
   set_tests_properties(workspace_setup PROPERTIES TIMEOUT 10)
+  add_test(NAME log_pruning COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_log_pruning.py ${CMAKE_CURRENT_SOURCE_DIR})
+  set_tests_properties(log_pruning PROPERTIES TIMEOUT 10)
   add_test(NAME eduroam COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_eduroam.py ${CMAKE_CURRENT_SOURCE_DIR})
   set_tests_properties(eduroam PROPERTIES TIMEOUT 30)

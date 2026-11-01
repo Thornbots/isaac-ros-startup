@@ -133,6 +133,7 @@ pruned=()
 mapfile -t old < <(cd "$LOG_DIR" && ls -d thornbots-run[0-9]*.log 2>/dev/null |
                    sed 's/\.log$//' | sort | head -n "-${LOG_KEEP_RUNS:-5}")
 for r in "${old[@]}"; do
+    [[ "$r" == "$RUN_NAME" ]] && continue
     (( $(df --output=avail -BG "$LOG_DIR" | tail -1 | tr -dc 0-9) < ${LOG_MIN_FREE_GB:-20} )) || break
     rm -rf "${LOG_DIR:?}/${r}" "${LOG_DIR:?}/${r}.log"
     pruned+=("$r")

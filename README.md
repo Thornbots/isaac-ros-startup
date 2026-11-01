@@ -293,7 +293,11 @@ non-interactive shell starts with). It isn't watched: if it dies, the stack keep
 
 **Pruning.** At each start, `thornbots-start.sh` deletes the oldest runs
 (text log and directory) while the log disk has under `LOG_MIN_FREE_GB`
-(20) free, always keeping the newest `LOG_KEEP_RUNS` (5).
+(20) free, always keeping the newest `LOG_KEEP_RUNS` (5). The active
+`RUN_NAME` is never deleted, even with `LOG_KEEP_RUNS=0`. The CTest
+`log_pruning` exercises the production pruning block with simulated free-space
+readings: oldest-first deletion, stopping once space recovers, retention and
+active-run protection (including its bag and latest symlinks).
 
 **RemoveIPC.** The stack runs as the workspace owner's UID, the same one
 you ssh in as. logind's default `RemoveIPC=yes` deletes that UID's
