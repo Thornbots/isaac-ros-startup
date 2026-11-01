@@ -180,7 +180,9 @@ the service runs. To run a `colcon build` from the workspace instead, set
 `USE_WS_OVERLAY=true`.
 
 The service boots with `LOCALIZATION_MODE=amcl`; `AUTO_LAUNCH_ARGS` adds
-space-separated `name:=value` arguments to `auto.launch.py`. See the
+space-separated `name:=value` arguments to `auto.launch.py`. Set independent
+`red_start_x`, `red_start_y`, `blue_start_x` and `blue_start_y` coordinates there
+for surveyed starts; omitted coordinates use the defaults in `auto.launch.py`. See the
 [launch.env comments](launch.env) and the
 [field-day and room workflow](../thornbots_pkg/README.md#field-day-and-room-workflow).
 
