@@ -10,8 +10,8 @@ before changing the boot service. Acceptance: [ROADMAP](../docs/ROADMAP.md#later
 - Keep `thornbots-start.sh` container flags aligned with aarch64
   isaac-ros-cli `run_dev.py`. Testing the service starts a container;
   [lifecycle permissions](../AGENTS.md#containers-and-runs) apply.
-- Build each robot's image on that robot, on wall power;
-  [image procedure](../isaac_ros_common/docker/README.md#building-the-robots-image).
+- Use the [registry base and robot overlay](../isaac_ros_common/docker/README.md#building-the-robots-image);
+  local image builds are a recovery fallback.
 
 ## Open
 

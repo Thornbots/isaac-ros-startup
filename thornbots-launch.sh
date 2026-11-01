@@ -36,9 +36,11 @@ export ROS_LOG_DIR="$RUN_DIR/ros"
 # ROS setup scripts read unset variables, so -u is off while they run.
 set +u
 source /opt/ros/jazzy/setup.bash
-source /workspaces/ros2_ws/install/setup.bash
-if [[ "${USE_WS_OVERLAY:-false}" == true && -f "$ISAAC_ROS_WS/install/setup.bash" ]]; then
-    source "$ISAAC_ROS_WS/install/setup.bash"
+if [[ "${USE_WS_OVERLAY:-true}" == true ]]; then
+    source /opt/thornbots-startup/workspace-setup.sh
+    thornbots_source_overlay "$ISAAC_ROS_WS" || exit 1
+else
+    source /workspaces/ros2_ws/install/setup.bash
 fi
 set -u
 echo "[thornbots] thornbots_pkg from $(ros2 pkg prefix thornbots_pkg)"
