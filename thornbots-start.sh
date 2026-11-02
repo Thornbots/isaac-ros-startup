@@ -83,14 +83,28 @@ if [[ -f /etc/thornbots/match-wifi-off.enabled ]]; then
     export AUTO_LAUNCH_ARGS="${AUTO_LAUNCH_ARGS:-} match_wifi_off:=true"
 fi
 
-# ── Image: newest isaac-ros-cli build of our chain, unless pinned
-if [[ -z "${THORNBOTS_IMAGE:-}" ]]; then
+# ── Image: the explicit pin, or the last successfully prepared registry image.
+if [[ -z "${THORNBOTS_IMAGE:-}" && -f "$ISAAC_ROS_WS_HOST/.robot-image" ]]; then
+    THORNBOTS_IMAGE=$(cat "$ISAAC_ROS_WS_HOST/.robot-image")
+fi
+# Baked-image mode remains an explicit recovery path for existing installations.
+if [[ -z "${THORNBOTS_IMAGE:-}" && "${USE_WS_OVERLAY:-true}" == false ]]; then
     THORNBOTS_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' nvcr.io/nvidia/isaac/ros |
                       grep -m1 -E ':isaac_ros-realsense-thornbots_[0-9a-f]+-arm64-jetpack$' || true)
 fi
-[[ -n "$THORNBOTS_IMAGE" ]] && docker image inspect "$THORNBOTS_IMAGE" >/dev/null 2>&1 || {
-    echo "ERROR: image '${THORNBOTS_IMAGE:-}' not found." >&2
-    echo "       Build it once: isaac-ros activate --build-local" >&2; exit 1; }
+[[ -n "${THORNBOTS_IMAGE:-}" ]] && docker image inspect "$THORNBOTS_IMAGE" >/dev/null 2>&1 || {
+    echo "ERROR: prepared image missing; run src/isaac_ros_common/scripts/pull_robot_image.sh" >&2
+    exit 1; }
+image_id=$(docker image inspect --format '{{.Id}}' "$THORNBOTS_IMAGE")
+if [[ "${USE_WS_OVERLAY:-true}" == true ]]; then
+    [[ -f "$ISAAC_ROS_WS_HOST/install/local_setup.bash" &&
+       -f "$ISAAC_ROS_WS_HOST/.robot-overlay-image" &&
+       "$(cat "$ISAAC_ROS_WS_HOST/.robot-overlay-image")" == "$image_id" ]] || {
+        echo "ERROR: overlay missing or built against another image; run build_robot_overlay.sh" >&2
+        exit 1; }
+fi
+# Pin this run even if a mutable tag moves while startup is in progress.
+THORNBOTS_IMAGE=$image_id
 
 # ── Model: the engine, or the ONNX TensorRT builds it from on first start
 ENGINE_HOST="${ISAAC_ROS_WS_HOST}/${ENGINE_REL_PATH}"
@@ -119,6 +133,7 @@ pruned=()
 mapfile -t old < <(cd "$LOG_DIR" && ls -d thornbots-run[0-9]*.log 2>/dev/null |
                    sed 's/\.log$//' | sort | head -n "-${LOG_KEEP_RUNS:-5}")
 for r in "${old[@]}"; do
+    [[ "$r" == "$RUN_NAME" ]] && continue
     (( $(df --output=avail -BG "$LOG_DIR" | tail -1 | tr -dc 0-9) < ${LOG_MIN_FREE_GB:-20} )) || break
     rm -rf "${LOG_DIR:?}/${r}" "${LOG_DIR:?}/${r}.log"
     pruned+=("$r")
@@ -198,7 +213,7 @@ done
         -e HOST_USER_GID="${HOST_USER_GID}" \
         -e ISAAC_ROS_WS=/workspaces/isaac_ros-dev \
         -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" \
-        -e USE_WS_OVERLAY="${USE_WS_OVERLAY:-false}" \
+        -e USE_WS_OVERLAY="${USE_WS_OVERLAY:-true}" \
         -e ENGINE_PATH="/workspaces/isaac_ros-dev/${ENGINE_REL_PATH}" \
         -e ONNX_PATH="/workspaces/isaac_ros-dev/${ONNX_REL_PATH}" \
         -e CONFIDENCE_THRESHOLD -e NMS_THRESHOLD -e NUM_CLASSES \

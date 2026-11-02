@@ -7,9 +7,8 @@ version is on the `humble` branch.
 
 ## Install
 
-Build the image once, on wall power, with
-`isaac_ros_common/scripts/build_robot_image.sh` (see
-`isaac_ros_common/docker/README.md`), then:
+Prepare the registry image and build the robot overlay using the
+[image workflow](../isaac_ros_common/docker/README.md#building-the-robots-image), then:
 
 ```bash
 sudo bash install.sh            # or: --ws /path/to/isaac_ros-dev
@@ -175,9 +174,21 @@ remains on the [robot checklist](../docs/ROADMAP.md#later-needs-a-robot).
 Stop the service before `isaac-ros activate`: both want the camera, the
 lidar and `/dev/ttyTHS1`.
 
-The image bakes our packages into `/workspaces/ros2_ws`, and that is what
-the service runs. To run a `colcon build` from the workspace instead, set
-`USE_WS_OVERLAY=true`.
+New installations default to `USE_WS_OVERLAY=true`. The service uses the
+immutable image ID in the host workspace's `.robot-image` and requires a
+successful overlay build against that ID (`.robot-overlay-image`). It never
+pulls or builds at boot, so startup works without internet. A missing overlay
+or an image mismatch fails before launching the stack; rebuild with
+`build_robot_overlay.sh` after preparing a different base.
+
+The launcher sources `/opt/ros/jazzy` and the overlay's `local_setup.bash`,
+then verifies that all seven application packages resolve inside the overlay.
+It never sources the image-baked application workspace in this mode. This
+avoids the two-workspace shadowing trap, including stale chained underlays.
+Existing `launch.env` files are preserved by installation: set
+`USE_WS_OVERLAY=true` after the first successful overlay build. For recovery,
+`USE_WS_OVERLAY=false` explicitly runs the tested image snapshot at
+`/workspaces/ros2_ws`; an explicit `THORNBOTS_IMAGE` overrides the saved pin.
 
 The service boots with `LOCALIZATION_MODE=amcl`; `AUTO_LAUNCH_ARGS` adds
 space-separated `name:=value` arguments to `auto.launch.py`. Set independent
@@ -283,7 +294,11 @@ non-interactive shell starts with). It isn't watched: if it dies, the stack keep
 
 **Pruning.** At each start, `thornbots-start.sh` deletes the oldest runs
 (text log and directory) while the log disk has under `LOG_MIN_FREE_GB`
-(20) free, always keeping the newest `LOG_KEEP_RUNS` (5).
+(20) free, always keeping the newest `LOG_KEEP_RUNS` (5). The active
+`RUN_NAME` is never deleted, even with `LOG_KEEP_RUNS=0`. The CTest
+`log_pruning` exercises the production pruning block with simulated free-space
+readings: oldest-first deletion, stopping once space recovers, retention and
+active-run protection (including its bag and latest symlinks).
 
 **RemoveIPC.** The stack runs as the workspace owner's UID, the same one
 you ssh in as. logind's default `RemoveIPC=yes` deletes that UID's
