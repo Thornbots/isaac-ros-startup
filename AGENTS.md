@@ -15,10 +15,8 @@ before changing the boot service. Acceptance: [ROADMAP](../docs/ROADMAP.md#later
 
 ## Open
 
-- Hardware acceptance still needs a real GPU-failure recovery, log pruning,
-  and Wi-Fi coming up during a run without a clock step/restart.
-- Stop timesyncd before a manual clock-step watcher test; it otherwise restores
-  synced time immediately.
-- Processes attached to an already-running stack can miss DDS nodes; read the
-  bag when discovery is incomplete. Investigation is still open.
-- Do not disable `nv-tee-supplicant`: GPU firmware loading depends on it.
+Software commitments: [ROADMAP](../docs/ROADMAP.md#d-and-e-acceptance-details).
+Physical validation: [ROBOT_TESTS](../docs/ROBOT_TESTS.md#consolidated-hardware-checks).
+
+Stop timesyncd before a manual clock-step watcher test; it otherwise restores synced time immediately.
+Read the bag when attached-client discovery is incomplete. Do not disable `nv-tee-supplicant`: GPU firmware loading depends on it.
