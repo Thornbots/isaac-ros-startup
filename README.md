@@ -279,7 +279,8 @@ script leaves timesyncd stopped: `sudo systemctl start systemd-timesyncd`.
 **Per-run bag.** `thornbots-launch.sh` records one MCAP bag per run:
 `/rosout` (every node's log, with severity, node and stamp as fields) and
 the localization, lidar, referee and CV topics (`/cv/target` and
-`/dji_serial_bridge/cv_target` included), and every colour frame as JPEG on
+`/dji_serial_bridge/cv_target` included), opaque MCB debug bytes on
+`/dji_serial_bridge/debug` in both normal and match runs, and every colour frame as JPEG on
 `/color/image_raw/compressed`. The RealSense node publishes raw only, so an
 `image_transport republish` node encodes it (`VIDEO_JPEG_QUALITY`, default
 80; `ENABLE_VIDEO=false` drops it). It is split
