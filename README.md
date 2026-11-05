@@ -138,9 +138,11 @@ NetworkManager's system D-Bus socket at `/run/dbus/system_bus_socket`;
 use `PrivateNetwork` or hide `/run/dbus`. Logs are in
 `journalctl -u thornbots-match-wifi-off.service`. Failed disconnects are reported,
 and remaining devices are still attempted. Requests are not retried; fix the
-cause before submitting another. Stale requests, invalid directories, start-limit
-recovery and `/run` volatility work as for MMM shutdown (reset both units with
-`systemctl reset-failed`, then restart the path unit).
+cause before submitting another. Requests left while the watcher was stopped
+are consumed when it starts. Remove stale requests before re-enabling if unwanted.
+Invalid directories at the request path need manual removal; after start-limit
+failures, remove the entry, reset both units with `systemctl reset-failed`, then
+restart the path unit. `/run` is volatile, so requests do not survive reboot.
 
 To disable, stop the stack first, then run on the host:
 
@@ -179,9 +181,9 @@ pulls or builds at boot, so startup works without internet. A missing overlay
 or an image mismatch fails before launching the stack; rebuild with
 `build_robot_overlay.sh` after preparing a different base.
 
-The launcher follows the overlay's
-[startup contract](../isaac_ros_common/docker/README.md#building-the-robots-image):
-it never sources the image-baked application workspace in this mode, which
+The launcher sources `/opt/ros/jazzy` and the overlay's `local_setup.bash`,
+then verifies that all seven application packages resolve inside the overlay.
+It never sources the image-baked application workspace in this mode. This
 avoids the two-workspace shadowing trap, including stale chained underlays.
 Existing `launch.env` files are preserved by installation: set
 `USE_WS_OVERLAY=true` after the first successful overlay build. For recovery,
