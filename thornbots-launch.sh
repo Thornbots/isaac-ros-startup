@@ -22,8 +22,21 @@ until out=$(/opt/thornbots-startup/cuda-probe 2>&1); do
 done
 boot "CUDA ready ($out)"
 
-# /etc/bash.bashrc sets these for interactive shells only.
-export FASTRTPS_DEFAULT_PROFILES_FILE=/etc/fastdds/profile.xml
+# /etc/bash.bashrc sets these for interactive shells only. Remote DDS is off
+# unless THORNBOTS_REMOTE_DDS is true/1: then no profile (its Tailscale peers
+# would defeat the range) and LOCALHOST discovery. Exported so auto.launch.py's
+# remote_dds argument defaults to the same answer.
+case "${THORNBOTS_REMOTE_DDS:-false}" in
+    1|true|TRUE|True)
+        export THORNBOTS_REMOTE_DDS=true
+        export FASTRTPS_DEFAULT_PROFILES_FILE=/etc/fastdds/profile.xml
+        unset ROS_AUTOMATIC_DISCOVERY_RANGE ;;
+    *)
+        export THORNBOTS_REMOTE_DDS=false
+        unset FASTRTPS_DEFAULT_PROFILES_FILE
+        export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST ;;
+esac
+boot "remote DDS ${THORNBOTS_REMOTE_DDS}"
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 # Readable node-side times and no ANSI colour in the logs. These times step
 # with the clock; log-stamp's uptime prefix doesn't.
@@ -92,8 +105,11 @@ fi
 # Read-only Foxglove websocket on FOXGLOVE_ADDRESS:FOXGLOVE_PORT: viewers can't
 # publish, call services or set parameters. Started with the stack, so it sees
 # every node. Not watched: if the address is missing it exits, the robot runs.
+# On unless THORNBOTS_FOXGLOVE=false; an old launch.env's ENABLE_FOXGLOVE is
+# honoured when THORNBOTS_FOXGLOVE is unset.
 foxglove_pid=
-if [[ "${ENABLE_FOXGLOVE:-false}" == true ]]; then
+foxglove="${THORNBOTS_FOXGLOVE:-${ENABLE_FOXGLOVE:-true}}"
+if [[ "${foxglove,,}" == true || "$foxglove" == 1 ]]; then
     if ros2 pkg prefix foxglove_bridge >/dev/null 2>&1; then
         setsid env --default-signal=INT ros2 run foxglove_bridge foxglove_bridge --ros-args \
             -p port:="${FOXGLOVE_PORT:-8765}" -p address:="${FOXGLOVE_ADDRESS:-0.0.0.0}" \
@@ -101,7 +117,7 @@ if [[ "${ENABLE_FOXGLOVE:-false}" == true ]]; then
         foxglove_pid=$!
         boot "foxglove bridge on ${FOXGLOVE_ADDRESS:-0.0.0.0}:${FOXGLOVE_PORT:-8765} (pid $foxglove_pid)"
     else
-        echo "[thornbots] ENABLE_FOXGLOVE=true but foxglove_bridge isn't in this image" >&2
+        echo "[thornbots] Foxglove is on but foxglove_bridge isn't in this image" >&2
     fi
 fi
 
