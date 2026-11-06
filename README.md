@@ -166,7 +166,7 @@ remains on the [robot checklist](../docs/ROADMAP.md#later-needs-a-robot).
 | Logs, per run | `$LOG_DIR/thornbots-run<N>.log`, newest at `$LOG_DIR/latest.log` |
 | Bag and node logs, per run | `$LOG_DIR/thornbots-run<N>/bag/` (MCAP) and `ros/`, newest at `$LOG_DIR/latest/` |
 | Read the bag | `ros2 bag info <dir>/bag`, or open its `.mcap` files in Foxglove |
-| Watch live | `ENABLE_FOXGLOVE=true` in `launch.env`, then Foxglove → `ws://<robot IP>:8765` (read-only); `FOXGLOVE_ADDRESS=192.168.55.1` limits it to the USB tether |
+| Watch live | Foxglove is on by default (`THORNBOTS_FOXGLOVE=false` in `launch.env` turns it off; an old `ENABLE_FOXGLOVE=false` line still does until removed), then Foxglove → `ws://<robot IP>:8765` (read-only); `FOXGLOVE_ADDRESS=192.168.55.1` limits it to the USB tether |
 | Restart after editing `launch.env` | `sudo systemctl restart thornbots` |
 | Shell in the running stack | `docker exec -it -u admin thornbots-runtime bash` |
 | Stop for development | `sudo systemctl stop thornbots` (and `disable` to keep it off across boots) |
@@ -227,7 +227,7 @@ clock step under the stack.
 **No `network-online.target`.** The robot runs air-gapped in a match, and
 waiting for Wi-Fi costs boot time. Fast DDS picks its interfaces when a
 participant starts, so nodes started before Wi-Fi or tailscale are up
-aren't reachable from other machines until the service restarts.
+aren't reachable from other machines (with remote DDS on) until the service restarts.
 
 **Why /host-dev.** `--privileged` gives the container a copy of `/dev` at
 start. The lidar (CP210x) can re-enumerate mid-run, so it is read through
@@ -313,6 +313,15 @@ installs `logind-thornbots.conf` (`RemoveIPC=no`).
 **Environment.** The image exports `ROS_DOMAIN_ID`, the Fast DDS profile
 and `RMW_IMPLEMENTATION` from `/etc/bash.bashrc`, which a non-interactive
 shell never reads, so `thornbots-launch.sh` sets them itself.
+
+**Remote DDS is off by default.** `THORNBOTS_REMOTE_DDS=false` in `launch.env`
+makes the stack send no discovery to other machines: no Fast DDS profile and
+`ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` (the profile's Tailscale peers would
+override the range). `ros2 topic list` from a laptop then shows nothing; use
+Foxglove. `THORNBOTS_REMOTE_DDS=true` plus `sudo systemctl restart thornbots`
+restores the profile and cross-machine `ros2`; the robot must also be on the
+laptop's `ROS_DOMAIN_ID`. Existing `launch.env` files lack the key and so get
+the default (off); they keep an explicit `ENABLE_FOXGLOVE=false`.
 
 **Domain per robot.** Each robot's stack runs on its own `ROS_DOMAIN_ID`
 (sentry 7, standard 3, hero 1; `launch.env`), because the profile's
