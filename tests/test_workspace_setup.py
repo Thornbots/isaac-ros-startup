@@ -31,11 +31,11 @@ class WorkspaceSetup(unittest.TestCase):
 
     def test_shadowed_package(self):
         result = self.check_overlay(
-            'ros2() { if [[ "$3" == thornbots_pkg ]]; then '
-            'echo /workspaces/ros2_ws/install/thornbots_pkg; else '
+            'ros2() { if [[ "$3" == thornbots_nav ]]; then '
+            'echo /workspaces/ros2_ws/install/thornbots_nav; else '
             'echo "$workspace/install/$3"; fi; }\n')
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn('thornbots_pkg resolves outside', result.stderr)
+        self.assertIn('thornbots_nav resolves outside', result.stderr)
 
     def test_missing_package(self):
         result = self.check_overlay('ros2() { return 1; }\n')
