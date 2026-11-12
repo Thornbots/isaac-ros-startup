@@ -30,12 +30,14 @@ class WorkspaceSetup(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_shadowed_package(self):
-        result = self.check_overlay(
-            'ros2() { if [[ "$3" == thornbots_nav ]]; then '
-            'echo /workspaces/ros2_ws/install/thornbots_nav; else '
-            'echo "$workspace/install/$3"; fi; }\n')
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('thornbots_nav resolves outside', result.stderr)
+        for package in ('thornbots_nav', 'thornbots_pkg'):
+            with self.subTest(package=package):
+                result = self.check_overlay(
+                    f'ros2() {{ if [[ "$3" == {package} ]]; then '
+                    f'echo /workspaces/ros2_ws/install/{package}; else '
+                    'echo "$workspace/install/$3"; fi; }\n')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(f'{package} resolves outside', result.stderr)
 
     def test_missing_package(self):
         result = self.check_overlay('ros2() { return 1; }\n')
