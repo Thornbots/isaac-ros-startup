@@ -6,3 +6,5 @@ destination=${1:-"$src/build"}
 mkdir -p "$destination"
 "${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Wpedantic "$src/src/log_stamp.cpp" -o "$destination/log-stamp"
 "${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Wpedantic "$src/src/cuda_probe.cpp" -ldl -o "$destination/cuda-probe"
+"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Wpedantic "$src/src/mmm_poweroff.cpp" -o "$destination/mmm-poweroff"
+"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Wpedantic "$src/src/match_wifi_off.cpp" -o "$destination/match-wifi-off"

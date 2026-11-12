@@ -56,14 +56,55 @@ ISAAC_ROS_WS_HOST="${ISAAC_ROS_WS_HOST%/}"
 HOST_USER_UID="${HOST_USER_UID:-$(stat -c %u "$ISAAC_ROS_WS_HOST")}"
 HOST_USER_GID="${HOST_USER_GID:-$(stat -c %g "$ISAAC_ROS_WS_HOST")}"
 
-# ── Image: newest isaac-ros-cli build of our chain, unless pinned
-if [[ -z "${THORNBOTS_IMAGE:-}" ]]; then
+# ── ROS domain: one per robot, so robots on one network never mix topics.
+if [[ -z "${ROS_DOMAIN_ID:-}" ]]; then
+    case "$(hostname)" in
+        *sentry*) ROS_DOMAIN_ID=7 ;;
+        *standard*) ROS_DOMAIN_ID=3 ;;
+        *) ROS_DOMAIN_ID=1 ;;
+    esac
+fi
+boot "ROS_DOMAIN_ID ${ROS_DOMAIN_ID}"
+
+# Only the explicit installer opt-in exposes the fixed request directory.
+mmm_mount=()
+if [[ -f /etc/thornbots/mmm-shutdown.enabled ]]; then
+    [[ -d /run/thornbots-mmm && ! -L /run/thornbots-mmm ]] || {
+        echo "ERROR: MMM request directory missing; check systemd-tmpfiles" >&2; exit 1; }
+    mmm_mount=(--mount "type=bind,src=/run/thornbots-mmm,dst=/run/thornbots-mmm")
+    export AUTO_LAUNCH_ARGS="${AUTO_LAUNCH_ARGS:-} mmm_shutdown_after_save:=true"
+fi
+
+wifi_mount=()
+if [[ -f /etc/thornbots/match-wifi-off.enabled ]]; then
+    [[ -d /run/thornbots-net && ! -L /run/thornbots-net ]] || {
+        echo "ERROR: Wi-Fi request directory missing; check systemd-tmpfiles" >&2; exit 1; }
+    wifi_mount=(--mount "type=bind,src=/run/thornbots-net,dst=/run/thornbots-net")
+    export AUTO_LAUNCH_ARGS="${AUTO_LAUNCH_ARGS:-} match_wifi_off:=true"
+fi
+
+# ── Image: the explicit pin, or the last successfully prepared registry image.
+if [[ -z "${THORNBOTS_IMAGE:-}" && -f "$ISAAC_ROS_WS_HOST/.robot-image" ]]; then
+    THORNBOTS_IMAGE=$(cat "$ISAAC_ROS_WS_HOST/.robot-image")
+fi
+# Baked-image mode remains an explicit recovery path for existing installations.
+if [[ -z "${THORNBOTS_IMAGE:-}" && "${USE_WS_OVERLAY:-true}" == false ]]; then
     THORNBOTS_IMAGE=$(docker images --format '{{.Repository}}:{{.Tag}}' nvcr.io/nvidia/isaac/ros |
                       grep -m1 -E ':isaac_ros-realsense-thornbots_[0-9a-f]+-arm64-jetpack$' || true)
 fi
-[[ -n "$THORNBOTS_IMAGE" ]] && docker image inspect "$THORNBOTS_IMAGE" >/dev/null 2>&1 || {
-    echo "ERROR: image '${THORNBOTS_IMAGE:-}' not found." >&2
-    echo "       Build it once: isaac-ros activate --build-local" >&2; exit 1; }
+[[ -n "${THORNBOTS_IMAGE:-}" ]] && docker image inspect "$THORNBOTS_IMAGE" >/dev/null 2>&1 || {
+    echo "ERROR: prepared image missing; run src/isaac_ros_common/scripts/pull_robot_image.sh" >&2
+    exit 1; }
+image_id=$(docker image inspect --format '{{.Id}}' "$THORNBOTS_IMAGE")
+if [[ "${USE_WS_OVERLAY:-true}" == true ]]; then
+    [[ -f "$ISAAC_ROS_WS_HOST/install/local_setup.bash" &&
+       -f "$ISAAC_ROS_WS_HOST/.robot-overlay-image" &&
+       "$(cat "$ISAAC_ROS_WS_HOST/.robot-overlay-image")" == "$image_id" ]] || {
+        echo "ERROR: overlay missing or built against another image; run build_robot_overlay.sh" >&2
+        exit 1; }
+fi
+# Pin this run even if a mutable tag moves while startup is in progress.
+THORNBOTS_IMAGE=$image_id
 
 # ── Model: the engine, or the ONNX TensorRT builds it from on first start
 ENGINE_HOST="${ISAAC_ROS_WS_HOST}/${ENGINE_REL_PATH}"
@@ -92,6 +133,7 @@ pruned=()
 mapfile -t old < <(cd "$LOG_DIR" && ls -d thornbots-run[0-9]*.log 2>/dev/null |
                    sed 's/\.log$//' | sort | head -n "-${LOG_KEEP_RUNS:-5}")
 for r in "${old[@]}"; do
+    [[ "$r" == "$RUN_NAME" ]] && continue
     (( $(df --output=avail -BG "$LOG_DIR" | tail -1 | tr -dc 0-9) < ${LOG_MIN_FREE_GB:-20} )) || break
     rm -rf "${LOG_DIR:?}/${r}" "${LOG_DIR:?}/${r}.log"
     pruned+=("$r")
@@ -163,14 +205,15 @@ done
         --name thornbots-runtime \
         --privileged --network host --ipc=host --pid=host \
         --gpus all \
+        "${mmm_mount[@]}" "${wifi_mount[@]}" \
         -e NVIDIA_VISIBLE_DEVICES=all \
         -e NVIDIA_DRIVER_CAPABILITIES=all \
         -e USERNAME=admin \
         -e HOST_USER_UID="${HOST_USER_UID}" \
         -e HOST_USER_GID="${HOST_USER_GID}" \
         -e ISAAC_ROS_WS=/workspaces/isaac_ros-dev \
-        -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-1}" \
-        -e USE_WS_OVERLAY="${USE_WS_OVERLAY:-false}" \
+        -e ROS_DOMAIN_ID="${ROS_DOMAIN_ID}" \
+        -e USE_WS_OVERLAY="${USE_WS_OVERLAY:-true}" \
         -e ENGINE_PATH="/workspaces/isaac_ros-dev/${ENGINE_REL_PATH}" \
         -e ONNX_PATH="/workspaces/isaac_ros-dev/${ONNX_REL_PATH}" \
         -e CONFIDENCE_THRESHOLD -e NMS_THRESHOLD -e NUM_CLASSES \
@@ -178,7 +221,9 @@ done
         -e LIDAR_SERIAL_DEVICE \
         -e LOCALIZATION_MODE -e ENABLE_SNAPSHOT \
         -e AUTO_LAUNCH_ARGS -e YOLO_LAUNCH_ARGS -e ENABLE_BAG \
-        -e ENABLE_VIDEO -e VIDEO_JPEG_QUALITY -e ENABLE_FOXGLOVE -e FOXGLOVE_PORT \
+        -e ENABLE_VIDEO -e VIDEO_JPEG_QUALITY \
+        -e THORNBOTS_FOXGLOVE -e ENABLE_FOXGLOVE -e FOXGLOVE_PORT -e FOXGLOVE_ADDRESS \
+        -e THORNBOTS_REMOTE_DDS \
         -e CAMERA_INITIAL_RESET="${CAMERA_INITIAL_RESET}" \
         -e THORNBOTS_RUN_DIR="/data/thornbots-logs/${RUN_NAME}" \
         -v "${ISAAC_ROS_WS_HOST}:/workspaces/isaac_ros-dev" \
