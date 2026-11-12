@@ -182,7 +182,7 @@ or an image mismatch fails before launching the stack; rebuild with
 `build_robot_overlay.sh` after preparing a different base.
 
 The launcher sources `/opt/ros/jazzy` and the overlay's `local_setup.bash`,
-then verifies that all seven application packages resolve inside the overlay.
+then verifies that all eight application packages resolve inside the overlay.
 It never sources the image-baked application workspace in this mode. This
 avoids the two-workspace shadowing trap, including stale chained underlays.
 Existing `launch.env` files are preserved by installation: set

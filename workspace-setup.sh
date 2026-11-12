@@ -8,7 +8,7 @@ thornbots_source_overlay() {
     # shellcheck source=/dev/null
     source "$workspace/install/local_setup.bash" || return 1
     for package in sllidar_ros2 dji_serial_bridge roi_depth_query rf2o_laser_odometry \
-        sentry_localization thornbots_pkg realsense_yolov8_nitros_bridge; do
+        sentry_localization thornbots_nav thornbots_pkg realsense_yolov8_nitros_bridge; do
         prefix=$(ros2 pkg prefix "$package") || return 1
         case "$prefix" in
             "$workspace/install/"*) ;;
